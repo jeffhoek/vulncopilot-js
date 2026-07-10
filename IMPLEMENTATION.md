@@ -69,16 +69,17 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 2 — Chat experience (streaming, history, action buttons)
 
-- [ ] Streaming chat route (agent stream → AI SDK UI message stream)
-- [ ] Real chat UI: `useChat`, markdown rendering, visible tool-call steps
-- [ ] Client-held history trimmed to `MAX_HISTORY_MESSAGES` (default 50)
-- [ ] "Ready! N vulnerability records available." banner (port `get_document_count`)
-- [ ] `ACTION_BUTTONS` quick-query buttons; introduce the JSON-array env convention with
+- [x] Streaming chat route (agent stream → AI SDK UI message stream)
+- [x] Real chat UI: `useChat`, markdown rendering, visible tool-call steps
+- [x] Client-held history trimmed to `MAX_HISTORY_MESSAGES` (default 50)
+- [x] "Ready! N vulnerability records available." banner (port `get_document_count`)
+- [x] `ACTION_BUTTONS` quick-query buttons; introduce the JSON-array env convention with
       blank-tolerant parsing (`""` → `[]`, port of `_decode_json_list`)
-- [ ] Config additions: `MAX_HISTORY_MESSAGES`, `ACTION_BUTTONS`; update `.env.example`
+- [x] Config additions: `MAX_HISTORY_MESSAGES`, `ACTION_BUTTONS`; update `.env.example`
+      (both were already documented in `.env.example` from Phase 1)
 - [ ] Verify: streamed answer renders; follow-up resolves references ("what CVSS score
-      does it have?")
-- [ ] Commit Phase 2
+      does it have?")  ← pending Jeff's manual test
+- [x] Commit Phase 2
 
 ## Phase 3 — Auth (NextAuth GitHub + allow-list)
 

@@ -1,16 +1,18 @@
-import type { ModelMessage } from "ai";
+import { convertToModelMessages, type UIMessage } from "ai";
 import { mastra } from "@/src/mastra";
 
 // pg + Mastra are Node-only; force the Node runtime (not Edge).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Phase 1: non-streaming. Accepts { messages }, runs the RAG agent, returns the
-// final text. Streaming, history trimming, auth, and rate limiting come later.
+// Phase 2: streaming. Accepts { messages } as AI SDK v5 UIMessages (already
+// trimmed to MAX_HISTORY_MESSAGES by the client — see app/chat.tsx), converts
+// them to model messages, and streams the agent's response back as a UI message
+// stream that `useChat` consumes. Auth and rate limiting still come later.
 export async function POST(req: Request): Promise<Response> {
-  let messages: ModelMessage[];
+  let messages: UIMessage[];
   try {
-    const body = (await req.json()) as { messages?: ModelMessage[] };
+    const body = (await req.json()) as { messages?: UIMessage[] };
     messages = body.messages ?? [];
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
@@ -22,8 +24,12 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const agent = mastra.getAgent("ragAgent");
-    const result = await agent.generate(messages);
-    return Response.json({ text: result.text });
+    // format: 'aisdk' yields an AISDKV5OutputStream whose toUIMessageStreamResponse()
+    // emits the SSE UI-message protocol useChat expects (text deltas + tool steps).
+    const stream = await agent.stream(convertToModelMessages(messages), {
+      format: "aisdk",
+    });
+    return stream.toUIMessageStreamResponse();
   } catch (err) {
     console.error("Chat route error", err);
     return Response.json({ error: "Failed to generate a response." }, { status: 500 });

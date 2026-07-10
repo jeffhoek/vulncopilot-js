@@ -64,6 +64,22 @@ Answer concisely. If the answer is not in the data, say so. When the user asks a
 const EMPTY_TO_UNDEFINED = (v: unknown) =>
   typeof v === "string" && v.trim() === "" ? undefined : v;
 
+// JSON-array env var (e.g. ACTION_BUTTONS=["a","b"]) that also tolerates a blank
+// value as []. Ported from reference `config.py::_decode_json_list`: a var that
+// is defined but empty (common in CI/pipeline variables) must not crash boot. A
+// non-blank value that fails to parse is returned as-is so the array validation
+// reports a clear env error instead of throwing an uncaught SyntaxError.
+const JSON_STR_LIST = z.preprocess((v) => {
+  if (typeof v !== "string") return v; // undefined → falls through to .default([])
+  const s = v.trim();
+  if (s === "") return [];
+  try {
+    return JSON.parse(s);
+  } catch {
+    return v;
+  }
+}, z.array(z.string()).default([]));
+
 const ConfigSchema = z.object({
   // Required.
   PG_DATABASE_URL: z.string().min(1, "PG_DATABASE_URL is required"),
@@ -72,6 +88,12 @@ const ConfigSchema = z.object({
 
   // Optional with reference-matching defaults.
   TOP_K: z.coerce.number().int().positive().default(5),
+  // Client-held history is trimmed to the last N messages sent per request
+  // (reference `config.py::max_history_messages`). See the note in app/chat.tsx:
+  // the reference counts internal tool messages, ours counts UI turns.
+  MAX_HISTORY_MESSAGES: z.coerce.number().int().positive().default(50),
+  // Quick-query buttons shown in the chat UI (reference `action_buttons`).
+  ACTION_BUTTONS: JSON_STR_LIST,
   // Pinned to the model the ETL side embedded with (1536-d). Changing it
   // silently breaks cosine search — see CLAUDE.md data contract.
   EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),

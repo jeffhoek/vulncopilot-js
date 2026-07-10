@@ -38,6 +38,19 @@ export async function runReadOnlyQuery(sql: string): Promise<QueryResult> {
   }
 }
 
+/**
+ * Total vulnerability records across both corpora, for the "Ready! N …" banner.
+ * Ported verbatim from reference `rag/vector_store.py::get_document_count`
+ * (KEV count + NVD count). pg returns bigint counts as strings — coerce to number.
+ */
+export async function getDocumentCount(): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT (SELECT count(*) FROM kev_vulnerabilities)
+          + (SELECT count(*) FROM nvd_vulnerabilities) AS count`,
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 /** True if `err` is a Postgres-side error (SQLSTATE), vs an unexpected error. */
 export function isPostgresError(err: unknown): err is Error & { code?: string } {
   return (
