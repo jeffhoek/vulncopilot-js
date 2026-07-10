@@ -23,49 +23,49 @@ The thinnest end-to-end vertical slice proving the Mastra RAG agent answers corr
 against the existing populated database. **Explicitly deferred to later phases: auth,
 rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI polish.**
 
-- [ ] Scaffold Next.js (App Router) + TypeScript strict + pnpm; deps: `@mastra/core`,
+- [x] Scaffold Next.js (App Router) + TypeScript strict + pnpm; deps: `@mastra/core`,
       `ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, `pg`, `zod`, `vitest`
-- [ ] `.gitignore` covers `.env*` (except `.env.example`), `node_modules`, `.next`
-- [ ] `.env.example` (Phase-1 surface): `PG_DATABASE_URL`, `ANTHROPIC_API_KEY`,
+- [x] `.gitignore` covers `.env*` (except `.env.example`), `node_modules`, `.next`
+- [x] `.env.example` (Phase-1 surface): `PG_DATABASE_URL`, `ANTHROPIC_API_KEY`,
       `OPENAI_API_KEY`; optional `TOP_K`, `EMBEDDING_MODEL`, `LLM_MODEL`, `LLM_EFFORT`,
       `SYSTEM_PROMPT`
-- [ ] `src/lib/config.ts` — zod-validated env. Defaults mirror reference `config.py`:
+- [x] `src/lib/config.ts` — zod-validated env. Defaults mirror reference `config.py`:
       `TOP_K=5`, `EMBEDDING_MODEL=text-embedding-3-small` (pinned, 1536-d),
       `LLM_MODEL=claude-sonnet-5`, `LLM_EFFORT=low`, and the **system prompt ported
       verbatim** from reference `config.py` (schema doc, "query BOTH KEV and NVD" rule,
       CWE join guidance, follow-up guidance)
-- [ ] `src/lib/db.ts` — single `pg` Pool from `PG_DATABASE_URL`; helper that executes
+- [x] `src/lib/db.ts` — single `pg` Pool from `PG_DATABASE_URL`; helper that executes
       tool SQL on a connection with `SET default_transaction_read_only = on`
-- [ ] `src/lib/sql-utils.ts` — port `validate_sql`, `apply_row_limit`,
+- [x] `src/lib/sql-utils.ts` — port `validate_sql`, `apply_row_limit`,
       `format_query_results` from reference `rag/sql_utils.py` (100 rows / 200 cell
       chars / 20k output chars; array cells joined by newline; truncation messages
       verbatim). Add multi-statement rejection to `validateSql`
-- [ ] Vitest unit tests for sql-utils (port reference `tests/unit/test_sql_utils.py`
+- [x] Vitest unit tests for sql-utils (port reference `tests/unit/test_sql_utils.py`
       cases; add multi-statement cases)
-- [ ] `src/mastra/embeddings.ts` — AI SDK `embed()` with `openai.embedding(EMBEDDING_MODEL)`
-- [ ] `src/mastra/tools/retrieve.ts` — embed the query, then the hand-written
+- [x] `src/mastra/embeddings.ts` — AI SDK `embed()` with `openai.embedding(EMBEDDING_MODEL)`
+- [x] `src/mastra/tools/retrieve.ts` — embed the query, then the hand-written
       cross-table cosine search from reference `rag/vector_store.py`:
       `SELECT content FROM (… kev_vulnerabilities UNION ALL … nvd_vulnerabilities)
       ORDER BY distance LIMIT $2`, embedding passed as a `'[f1,f2,…]'` string with an
       explicit `::vector` cast. Returns `"Retrieved context:\n\n" + join("\n\n---\n\n")`
       or `"No relevant context found."`. Never re-embed the corpus
-- [ ] `src/mastra/tools/query.ts` — `validateSql` → `applyRowLimit` → execute read-only
+- [x] `src/mastra/tools/query.ts` — `validateSql` → `applyRowLimit` → execute read-only
       → `formatQueryResults`. Returns error strings (`"Query error: …"`,
       `"Internal error executing query."`, `"No results found."`); never throws
-- [ ] `src/mastra/agents/rag-agent.ts` — Agent with model, verbatim system prompt, both
+- [x] `src/mastra/agents/rag-agent.ts` — Agent with model, verbatim system prompt, both
       tools; map `LLM_EFFORT` to the Anthropic provider option
-- [ ] `src/mastra/index.ts` — Mastra instance embedded in Next.js (no standalone server)
-- [ ] `app/api/chat/route.ts` — non-streaming: accepts `{ messages }`, runs
+- [x] `src/mastra/index.ts` — Mastra instance embedded in Next.js (no standalone server)
+- [x] `app/api/chat/route.ts` — non-streaming: accepts `{ messages }`, runs
       `agent.generate`, returns the final text
-- [ ] `app/page.tsx` — minimal chat page: input + submit + plain transcript in React state
-- [ ] **Definition of done (run it, not "it compiles"):**
-  - [ ] `pnpm test` green
-  - [ ] `.env` filled (by Jeff); `pnpm dev` starts
-  - [ ] Conceptual question ("Tell me about Log4Shell") answered correctly via `retrieve`
-  - [ ] SQL question ("How many KEV entries have known ransomware use?") answered
+- [x] `app/page.tsx` — minimal chat page: input + submit + plain transcript in React state
+- [x] **Definition of done (run it, not "it compiles"):**
+  - [x] `pnpm test` green
+  - [x] `.env` filled (by Jeff); `pnpm dev` starts
+  - [x] Conceptual question ("Tell me about Log4Shell") answered correctly via `retrieve`
+  - [x] SQL question ("How many KEV entries have known ransomware use?") answered
         correctly via `query`, cross-checked with a direct `psql` query
-  - [ ] CVE-ID lookup shows the agent querying BOTH kev and nvd tables
-- [ ] Commit Phase 1
+  - [x] CVE-ID lookup shows the agent querying BOTH kev and nvd tables
+- [x] Commit Phase 1
 
 ## Phase 2 — Chat experience (streaming, history, action buttons)
 
