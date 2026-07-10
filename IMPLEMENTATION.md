@@ -77,8 +77,8 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
       blank-tolerant parsing (`""` → `[]`, port of `_decode_json_list`)
 - [x] Config additions: `MAX_HISTORY_MESSAGES`, `ACTION_BUTTONS`; update `.env.example`
       (both were already documented in `.env.example` from Phase 1)
-- [ ] Verify: streamed answer renders; follow-up resolves references ("what CVSS score
-      does it have?")  ← pending Jeff's manual test
+- [x] Verify: streamed answer renders; follow-up resolves references ("what CVSS score
+      does it have?")
 - [x] Commit Phase 2
 
 ## Phase 3 — Auth (NextAuth GitHub + allow-list)
