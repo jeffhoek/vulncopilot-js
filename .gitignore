@@ -1,2 +1,13 @@
+# Secrets — ignore all .env files except the checked-in example.
 .env*
+!.env.example
 
+# Dependencies / build output
+node_modules
+.next
+dist
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
