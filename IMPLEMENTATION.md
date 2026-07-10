@@ -124,13 +124,14 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 5 — Admin usage dashboard
 
-- [ ] `/admin` server component, **session-gated to `ADMIN_USER_IDENTIFIERS`**
+- [x] `/admin` server component, **session-gated to `ADMIN_USER_IDENTIFIERS`**
       (HTTP Basic / `ADMIN_SECRET` dropped by design)
-- [ ] Port `get_usage_stats` (today/7d/30d query counts, all-time tokens, estimated cost
+- [x] Port `get_usage_stats` (today/7d/30d query counts, all-time tokens, estimated cost
       from `LLM_INPUT_COST_PER_MILLION` / `LLM_OUTPUT_COST_PER_MILLION`)
-- [ ] Config additions: cost-per-million vars; update `.env.example`
-- [ ] Verify: admin sees real rows; non-admin and signed-out are denied
-- [ ] Commit Phase 5
+- [x] Config additions: cost-per-million vars (`.env.example` already documented these from
+      Phase 1; only `config.ts` needed the additions)
+- [x] Verify: admin sees real rows; non-admin and signed-out are denied
+- [x] Commit Phase 5
 
 ## Phase 6 — Public /etl-stats page
 
