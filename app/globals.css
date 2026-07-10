@@ -359,3 +359,88 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Public /etl-stats run-history page (Phase 6). Port of the reference
+   etl_stats.py template look. Shares the admin table styling conventions. */
+.etl {
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+  padding: 1.5rem;
+  line-height: 1.4;
+}
+
+.etl h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.etl-sub {
+  margin: 0 0 1.25rem;
+  opacity: 0.7;
+}
+
+.etl-empty {
+  padding: 2rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.etl-scroll {
+  overflow: auto;
+  max-height: 80vh;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+}
+
+.etl-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+.etl-table th,
+.etl-table td {
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid #e2e2e2;
+  vertical-align: top;
+}
+
+.etl-table th {
+  position: sticky;
+  top: 0;
+  background: #ececec;
+  font-weight: 600;
+}
+
+.etl-badge {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.etl-badge.ok {
+  background: #1a7f3722;
+  color: #1a7f37;
+}
+
+.etl-badge.fail {
+  background: #c0283322;
+  color: #c02833;
+}
+
+.etl-loaders {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.etl-loaders li {
+  margin: 0.1rem 0;
+}
+
+.dur {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
