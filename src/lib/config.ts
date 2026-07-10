@@ -156,6 +156,12 @@ const ConfigSchema = z.object({
   // rather than owning its own constants.
   LLM_INPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(3.0),
   LLM_OUTPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(15.0),
+
+  // ── MCP server (Phase 7) ────────────────────────────────────────────────
+  // Guards /api/mcp via the x-api-key header (timing-safe compare). Optional:
+  // if unset, the route logs a warning and serves UNAUTHENTICATED — mirroring
+  // reference `mcp_server/server.py` (mcp_api_key: str | None). Blank → unset.
+  MCP_API_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

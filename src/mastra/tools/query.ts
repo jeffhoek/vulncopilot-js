@@ -13,7 +13,12 @@ export const queryTool = createTool({
   inputSchema: z.object({
     sql: z.string().describe("A single SELECT statement to run against the database."),
   }),
-  outputSchema: z.string(),
+  // No outputSchema: the tool returns a plain string (a formatted table or an
+  // error string). MCP requires a tool's outputSchema to be an OBJECT type, so a
+  // scalar z.string() makes MCPServer emit an invalid tools/call result
+  // ("structuredContent: expected record, received string"). Omitting it returns
+  // the string as MCP text content — matching the reference FastMCP `-> str`
+  // tools (mcp_server/server.py), which declared no structured output schema.
   execute: async ({ context }) => {
     const error = validateSql(context.sql);
     if (error) {
