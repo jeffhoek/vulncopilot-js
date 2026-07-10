@@ -102,18 +102,21 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 4 — Rate limiting + token accounting
 
-- [ ] `src/lib/usage.ts` — `checkAndIncrement`: the exact atomic upsert from reference
+- [x] `src/lib/usage.ts` — `checkAndIncrement`: the exact atomic upsert from reference
       `rag/usage.py` (`INSERT … ON CONFLICT (user_identifier, query_date) DO UPDATE …
       RETURNING query_count`); `allowed = new_count <= limit`
-- [ ] `limitFor(userId)` — `ADMIN_DAILY_QUERY_LIMIT` for `ADMIN_USER_IDENTIFIERS`
+- [x] `limitFor(userId)` — `ADMIN_DAILY_QUERY_LIMIT` for `ADMIN_USER_IDENTIFIERS`
       members, else `DAILY_QUERY_LIMIT`
-- [ ] Wrap `/api/chat`: cheap read-only pre-check before the LLM call; authoritative
+- [x] Wrap `/api/chat`: cheap read-only pre-check before the LLM call; authoritative
       `checkAndIncrement` after, with input/output tokens from the run result; withhold
       the answer on the TOCTOU over-limit case. Message verbatim: "You've reached your
       daily limit of {limit} queries. Try again tomorrow."
-- [ ] Config additions: `DAILY_QUERY_LIMIT` (20), `ADMIN_DAILY_QUERY_LIMIT` (100000),
+      **DEVIATION:** streaming cannot withhold an already-sent answer — the pre-check
+      bounds sequential users and the post-run upsert blocks the next request instead.
+      See the FLAGGED DIVERGENCE note in `app/api/chat/route.ts`.
+- [x] Config additions: `DAILY_QUERY_LIMIT` (20), `ADMIN_DAILY_QUERY_LIMIT` (100000),
       `ADMIN_USER_IDENTIFIERS`
-- [ ] Tests: port `test_rate_limit.py` boundary semantics
+- [x] Tests: port `test_rate_limit.py` boundary semantics
 - [ ] Verify live with `DAILY_QUERY_LIMIT=2`: third query blocked; `user_usage` row shows
       counts + tokens. **Prereq:** the app DB role needs INSERT/UPDATE on `user_usage`
       (+ its id sequence) — confirm on the remote DB first

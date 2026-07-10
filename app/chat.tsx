@@ -96,7 +96,14 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
             <MessageBubble key={m.id} message={m} />
           ))}
           {status === "submitted" && <div style={{ color: "#888" }}>Thinking…</div>}
-          {error && <div style={{ color: "#b00020" }}>Error: {error.message}</div>}
+          {error &&
+            (/^You've reached your daily limit/.test(error.message) ? (
+              // Phase 4: the rate-limit body is a user-facing notice, not a fault —
+              // render the verbatim message without the "Error:" framing.
+              <div style={{ color: "#8a6d00" }}>{error.message}</div>
+            ) : (
+              <div style={{ color: "#b00020" }}>Error: {error.message}</div>
+            ))}
           <div ref={endRef} />
         </div>
 

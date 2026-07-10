@@ -139,6 +139,15 @@ const ConfigSchema = z.object({
   AUTH_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
   AUTH_GITHUB_ID: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
   AUTH_GITHUB_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+
+  // ── Rate limiting (Phase 4) ─────────────────────────────────────────────
+  // Per-user daily query cap, counted atomically in `user_usage` (reference
+  // `config.py` + `rag/usage.py`). Admins listed in ADMIN_USER_IDENTIFIERS get
+  // ADMIN_DAILY_QUERY_LIMIT and (Phase 5) access to /admin. Identifiers are the
+  // stable `github:<id>` keys, JSON-array like the allow-list fields.
+  DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(20),
+  ADMIN_DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(100000),
+  ADMIN_USER_IDENTIFIERS: JSON_STR_LIST,
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
