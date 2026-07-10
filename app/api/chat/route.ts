@@ -65,6 +65,7 @@ export async function POST(req: Request): Promise<Response> {
   // message renders verbatim in the UI. 429 = Too Many Requests.
   try {
     if ((await currentDailyCount(pool, userId)) >= limit) {
+      console.warn(`[rate-limit] pre-check blocked user=${userId} limit=${limit}`);
       return new Response(limitMessage(limit), {
         status: 429,
         headers: { "content-type": "text/plain; charset=utf-8" },
@@ -78,40 +79,50 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const agent = mastra.getAgent("ragAgent");
+    // Authoritative gate + token accounting. Runs in the model-output onFinish
+    // (fired in-band as the stream is consumed), NOT the UI-stream onFinish. The
+    // latter would force us to await `stream.totalUsage`, a promise on a teed
+    // branch that can hang when the UI stream is the branch actually being pulled
+    // — which silently skipped the increment. Here `steps` arrives directly in the
+    // callback; summing each step's usage gives the whole run's tokens (analogous
+    // to pydantic-ai's result.usage()). Server-side post-stream work like this is
+    // fine on a persistent Node server (see `runtime = "nodejs"`); a serverless
+    // deploy would need waitUntil to guarantee it completes.
+    const onFinish = async (event: {
+      steps?: Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>;
+    }) => {
+      try {
+        const steps = event.steps ?? [];
+        const inputTokens = steps.reduce((n, s) => n + (s.usage?.inputTokens ?? 0), 0);
+        const outputTokens = steps.reduce((n, s) => n + (s.usage?.outputTokens ?? 0), 0);
+        const { allowed, newCount } = await checkAndIncrement(
+          pool,
+          userId,
+          limit,
+          inputTokens,
+          outputTokens,
+        );
+        console.log(
+          `[rate-limit] recorded user=${userId} count=${newCount} limit=${limit} in=${inputTokens} out=${outputTokens} allowed=${allowed}`,
+        );
+        if (!allowed) {
+          // Cannot withhold a streamed answer (see FLAGGED DIVERGENCE above);
+          // record + log so the next request is blocked at the pre-check.
+          console.warn(`Rate limit hit: user=${userId} count=${newCount} limit=${limit}`);
+        }
+      } catch (err) {
+        console.error("Usage accounting failed", err);
+      }
+    };
+
     // format: 'aisdk' yields an AISDKV5OutputStream whose toUIMessageStreamResponse()
     // emits the SSE UI-message protocol useChat expects (text deltas + tool steps).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- aisdk onFinish arg omits `steps` typing; shape verified against @mastra/core stream types.
     const stream = await agent.stream(convertToModelMessages(messages), {
       format: "aisdk",
+      onFinish: onFinish as any,
     });
-    // Authoritative gate + token accounting, run once the stream is fully
-    // consumed. `stream.totalUsage` sums every step (analogous to pydantic-ai's
-    // result.usage()); it is resolved by the time onFinish fires. This runs
-    // server-side after the response has started streaming — fine on a persistent
-    // Node server (see `runtime = "nodejs"`); a serverless deploy would need
-    // waitUntil to guarantee it completes.
-    return stream.toUIMessageStreamResponse({
-      onFinish: async () => {
-        try {
-          const usage = await stream.totalUsage;
-          const { allowed, newCount } = await checkAndIncrement(
-            pool,
-            userId,
-            limit,
-            usage.inputTokens ?? 0,
-            usage.outputTokens ?? 0,
-          );
-          if (!allowed) {
-            // Cannot withhold a streamed answer (see FLAGGED DIVERGENCE above);
-            // record + log so the next request is blocked at the pre-check.
-            console.warn(
-              `Rate limit hit: user=${userId} count=${newCount} limit=${limit}`,
-            );
-          }
-        } catch (err) {
-          console.error("Usage accounting failed", err);
-        }
-      },
-    });
+    return stream.toUIMessageStreamResponse();
   } catch (err) {
     console.error("Chat route error", err);
     return Response.json({ error: "Failed to generate a response." }, { status: 500 });
