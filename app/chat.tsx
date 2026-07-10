@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatProps {
   documentCount: number | null;
@@ -122,8 +123,10 @@ function MessageBubble({ message }: { message: UIMessage }) {
       {message.parts.map((part, i) => {
         if (part.type === "text") {
           return (
-            <div key={i} style={{ lineHeight: 1.5 }} className="md">
-              <ReactMarkdown>{part.text}</ReactMarkdown>
+            <div key={i} className="md">
+              {/* remark-gfm enables GFM tables/strikethrough/autolinks — base
+                  react-markdown is CommonMark-only and renders tables as raw text. */}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
             </div>
           );
         }
