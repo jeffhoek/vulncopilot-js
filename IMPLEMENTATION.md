@@ -117,10 +117,10 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 - [x] Config additions: `DAILY_QUERY_LIMIT` (20), `ADMIN_DAILY_QUERY_LIMIT` (100000),
       `ADMIN_USER_IDENTIFIERS`
 - [x] Tests: port `test_rate_limit.py` boundary semantics
-- [ ] Verify live with `DAILY_QUERY_LIMIT=2`: third query blocked; `user_usage` row shows
+- [x] Verify live with `DAILY_QUERY_LIMIT=2`: third query blocked; `user_usage` row shows
       counts + tokens. **Prereq:** the app DB role needs INSERT/UPDATE on `user_usage`
       (+ its id sequence) — confirm on the remote DB first
-- [ ] Commit Phase 4
+- [x] Commit Phase 4
 
 ## Phase 5 — Admin usage dashboard
 
