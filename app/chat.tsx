@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
@@ -35,6 +35,12 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages }: ChatP
 
   const isBusy = status === "submitted" || status === "streaming";
 
+  // Keep the newest content in view as messages arrive / stream in.
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
   function submit(text: string) {
     const t = text.trim();
     if (!t || isBusy) return;
@@ -43,67 +49,62 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages }: ChatP
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: "1.4rem", marginBottom: "0.25rem" }}>VulnCopilot</h1>
-      <p style={{ color: "#666", marginBottom: "1rem" }}>
-        {documentCount != null
-          ? `Ready! ${documentCount.toLocaleString()} vulnerability records available.`
-          : "Ask about CISA KEV / NIST NVD vulnerabilities."}
-      </p>
+    <div className="app">
+      <aside className="sidebar">
+        <h1>VulnCopilot</h1>
+        <p className="tagline">CISA KEV / NIST NVD vulnerability assistant.</p>
+        {actionButtons.length > 0 && (
+          <div className="quick-queries">
+            <span className="qq-label">Quick queries</span>
+            {actionButtons.map((label) => (
+              <button key={label} type="button" className="pill" onClick={() => submit(label)} disabled={isBusy}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </aside>
 
-      {actionButtons.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {actionButtons.map((label) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => submit(label)}
-              disabled={isBusy}
-              style={{
-                padding: "0.4rem 0.75rem",
-                borderRadius: 999,
-                border: "1px solid #ccc",
-                background: "#fafafa",
-                cursor: isBusy ? "default" : "pointer",
-                fontSize: "0.85rem",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+      <section className="chat">
+        <div className="banner">
+          {documentCount != null
+            ? `Ready! ${documentCount.toLocaleString()} vulnerability records available.`
+            : "Ask about CISA KEV / NIST NVD vulnerabilities."}
         </div>
-      )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
-        ))}
-        {status === "submitted" && <div style={{ color: "#888" }}>Thinking…</div>}
-        {error && <div style={{ color: "#b00020" }}>Error: {error.message}</div>}
-      </div>
+        <div className="transcript">
+          {messages.length === 0 && <div className="empty">Ask a question to get started.</div>}
+          {messages.map((m) => (
+            <MessageBubble key={m.id} message={m} />
+          ))}
+          {status === "submitted" && <div style={{ color: "#888" }}>Thinking…</div>}
+          {error && <div style={{ color: "#b00020" }}>Error: {error.message}</div>}
+          <div ref={endRef} />
+        </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(input);
-        }}
-        style={{ display: "flex", gap: "0.5rem" }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Tell me about Log4Shell…"
-          style={{ flex: 1, padding: "0.6rem 0.75rem", borderRadius: 8, border: "1px solid #ccc" }}
-        />
-        <button
-          type="submit"
-          disabled={isBusy}
-          style={{ padding: "0.6rem 1.2rem", borderRadius: 8, border: "none", background: "#4f46e5", color: "#fff", cursor: "pointer" }}
+        <form
+          className="composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit(input);
+          }}
         >
-          Send
-        </button>
-      </form>
-    </main>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Tell me about Log4Shell…"
+            style={{ flex: 1, padding: "0.6rem 0.75rem", borderRadius: 8, border: "1px solid #ccc" }}
+          />
+          <button
+            type="submit"
+            disabled={isBusy}
+            style={{ padding: "0.6rem 1.2rem", borderRadius: 8, border: "none", background: "#4f46e5", color: "#fff", cursor: "pointer" }}
+          >
+            Send
+          </button>
+        </form>
+      </section>
+    </div>
   );
 }
 
