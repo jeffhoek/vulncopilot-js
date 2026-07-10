@@ -135,12 +135,12 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 6 — Public /etl-stats page
 
-- [ ] `/etl-stats` server component reading `etl_runs` (newest first, LIMIT 50), no auth
-- [ ] Port the public-exposure hardening from reference `rag/etl_stats.py`: **never
+- [x] `/etl-stats` server component reading `etl_runs` (newest first, LIMIT 50), no auth
+- [x] Port the public-exposure hardening from reference `rag/etl_stats.py`: **never
       render the raw per-loader `error` field** — status, counts, durations, and a
       generic "failed" only
-- [ ] Verify: renders real ETL run rows from the shared DB
-- [ ] Commit Phase 6
+- [x] Verify: renders real ETL run rows from the shared DB
+- [x] Commit Phase 6
 
 ## Phase 7 — MCP server route
 
