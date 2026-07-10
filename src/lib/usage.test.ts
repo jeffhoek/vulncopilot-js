@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { limitFor, limitMessage, type RateLimitConfig } from "./usage";
+import { estimateCost, limitFor, limitMessage, type RateLimitConfig } from "./usage";
 
 // Port of reference `tests/unit/test_rate_limit.py`. Covers the pure per-user
 // effective-limit boundary logic. checkAndIncrement / currentDailyCount hit the
@@ -34,5 +34,21 @@ describe("limitMessage (port of app._limit_message)", () => {
     expect(limitMessage(2)).toBe(
       "You've reached your daily limit of 2 queries. Try again tomorrow.",
     );
+  });
+});
+
+describe("estimateCost (port of usage.get_usage_stats est_cost)", () => {
+  it("prices input + output tokens at the given per-million rates", () => {
+    // 2M input @ $3 + 1M output @ $15 = $6 + $15 = $21
+    expect(estimateCost(2_000_000, 1_000_000, 3.0, 15.0)).toBeCloseTo(21.0, 6);
+  });
+
+  it("is zero when no tokens have been spent", () => {
+    expect(estimateCost(0, 0, 3.0, 15.0)).toBe(0);
+  });
+
+  it("scales sub-million token counts proportionally", () => {
+    // 500k input @ $3 = $1.50; 250k output @ $15 = $3.75 → $5.25
+    expect(estimateCost(500_000, 250_000, 3.0, 15.0)).toBeCloseTo(5.25, 6);
   });
 });

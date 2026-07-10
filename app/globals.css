@@ -300,3 +300,62 @@ body {
   background: #ececec;
   font-weight: 600;
 }
+
+/* /admin usage dashboard (Phase 5). Port of the reference dashboard.html look. */
+.admin {
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+  padding: 1.5rem;
+  line-height: 1.4;
+}
+
+.admin h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.admin-sub {
+  margin: 0 0 1.25rem;
+  opacity: 0.7;
+}
+
+.admin-empty {
+  padding: 2rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.admin-scroll {
+  overflow: auto;
+  max-height: 80vh;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+}
+
+.admin-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid #e2e2e2;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.admin-table th {
+  position: sticky;
+  top: 0;
+  background: #ececec;
+  font-weight: 600;
+}
+
+.admin-table td.num,
+.admin-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

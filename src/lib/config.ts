@@ -148,6 +148,14 @@ const ConfigSchema = z.object({
   DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(20),
   ADMIN_DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(100000),
   ADMIN_USER_IDENTIFIERS: JSON_STR_LIST,
+
+  // ── Admin dashboard cost estimation (Phase 5) ───────────────────────────
+  // USD per million tokens, used only by /admin to estimate spend from the
+  // recorded token totals (reference `config.py::llm_input/output_cost_per_million`).
+  // One source of truth: usage.py's getUsageStats takes these as arguments
+  // rather than owning its own constants.
+  LLM_INPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(3.0),
+  LLM_OUTPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(15.0),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

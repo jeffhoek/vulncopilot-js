@@ -78,3 +78,82 @@ export async function currentDailyCount(pool: Pool, userId: string): Promise<num
 export function limitMessage(limit: number): string {
   return `You've reached your daily limit of ${limit} queries. Try again tomorrow.`;
 }
+
+// Per-user aggregate for the /admin dashboard. Query counts are windowed
+// (today / last 7 / last 30 days, each window inclusive of today); token totals
+// are all-time so the estimated cost reflects everything the user has spent.
+// Ported verbatim from reference `rag/usage.py::_STATS_SQL`.
+const STATS_SQL = `
+SELECT
+    user_identifier,
+    COALESCE(SUM(query_count) FILTER (WHERE query_date = CURRENT_DATE), 0)                      AS queries_today,
+    COALESCE(SUM(query_count) FILTER (WHERE query_date >= CURRENT_DATE - INTERVAL '6 days'), 0) AS queries_7d,
+    COALESCE(SUM(query_count) FILTER (WHERE query_date >= CURRENT_DATE - INTERVAL '29 days'), 0) AS queries_30d,
+    COALESCE(SUM(input_tokens), 0)  AS input_tokens,
+    COALESCE(SUM(output_tokens), 0) AS output_tokens
+FROM user_usage
+GROUP BY user_identifier
+ORDER BY queries_30d DESC, user_identifier
+`;
+
+export interface UsageStat {
+  userIdentifier: string;
+  queriesToday: number;
+  queries7d: number;
+  queries30d: number;
+  inputTokens: number;
+  outputTokens: number;
+  estCost: number;
+}
+
+/**
+ * Estimated USD cost from token totals and per-million prices. Pure and
+ * exported so the cost math can be unit-tested without a DB. Ported from
+ * reference `rag/usage.py::get_usage_stats` (the est_cost expression).
+ */
+export function estimateCost(
+  inputTokens: number,
+  outputTokens: number,
+  inputCostPerMillion: number,
+  outputCostPerMillion: number,
+): number {
+  return (
+    (inputTokens / 1_000_000) * inputCostPerMillion +
+    (outputTokens / 1_000_000) * outputCostPerMillion
+  );
+}
+
+/**
+ * Per-user usage aggregate for the admin dashboard: windowed query counts
+ * (today / 7-day / 30-day), all-time token totals, and an estimated USD cost
+ * from the supplied per-million prices (kept out of this module so config stays
+ * the single source of truth). Port of reference `rag/usage.py::get_usage_stats`.
+ * pg returns SUM()/bigint columns as strings — coerce to number.
+ */
+export async function getUsageStats(
+  pool: Pool,
+  inputCostPerMillion: number,
+  outputCostPerMillion: number,
+): Promise<UsageStat[]> {
+  const res = await pool.query<{
+    user_identifier: string;
+    queries_today: string;
+    queries_7d: string;
+    queries_30d: string;
+    input_tokens: string;
+    output_tokens: string;
+  }>(STATS_SQL);
+  return res.rows.map((r) => {
+    const inputTokens = Number(r.input_tokens);
+    const outputTokens = Number(r.output_tokens);
+    return {
+      userIdentifier: r.user_identifier,
+      queriesToday: Number(r.queries_today),
+      queries7d: Number(r.queries_7d),
+      queries30d: Number(r.queries_30d),
+      inputTokens,
+      outputTokens,
+      estCost: estimateCost(inputTokens, outputTokens, inputCostPerMillion, outputCostPerMillion),
+    };
+  });
+}
