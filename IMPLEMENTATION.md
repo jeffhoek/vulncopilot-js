@@ -83,18 +83,23 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 3 — Auth (NextAuth GitHub + allow-list)
 
-- [ ] `auth.ts` — NextAuth v5, GitHub provider; `signIn` callback ports the reference
+- [x] `auth.ts` — NextAuth v5, GitHub provider; `signIn` callback ports the reference
       `app.py::oauth_callback` branching exactly: allow if `OPEN_REGISTRATION` → email in
       `ALLOWED_EMAILS` → email domain in `ALLOWED_EMAIL_DOMAINS` → login in
-      `ALLOWED_LOGINS`; else deny + log warning
-- [ ] Identity key = stable numeric GitHub id as `github:<id>` (never login/email),
+      `ALLOWED_LOGINS`; else deny + log warning (branching lives in the pure,
+      unit-tested `src/lib/auth-allowlist.ts::decideAccess`)
+- [x] Identity key = stable numeric GitHub id as `github:<id>` (never login/email),
       carried in JWT/session
-- [ ] Gate the chat page and `/api/chat` (401 without session); sign-in / denied UX
-- [ ] Config additions: `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`,
+- [x] Gate the chat page and `/api/chat` (401 without session); sign-in / denied UX
+- [x] Config additions: `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`,
       `ALLOWED_EMAILS`, `ALLOWED_EMAIL_DOMAINS`, `ALLOWED_LOGINS`, `OPEN_REGISTRATION`
-- [ ] Unit tests for the allow-list decision function (port `test_oauth_callback.py`)
+      (`.env.example` already documented these from Phase 1; `AUTH_*` kept optional in
+      `config.ts` — NextAuth reads them from env directly — so boot never hard-fails
+      before OAuth is configured)
+- [x] Unit tests for the allow-list decision function (port `test_oauth_callback.py`)
 - [ ] Verify: real GitHub sign-in succeeds when allow-listed; denied when not
-- [ ] Commit Phase 3
+      (pending Jeff's manual test — needs a GitHub OAuth App + `AUTH_*` secrets in `.env`)
+- [x] Commit Phase 3
 
 ## Phase 4 — Rate limiting + token accounting
 

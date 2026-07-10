@@ -80,6 +80,15 @@ const JSON_STR_LIST = z.preprocess((v) => {
   }
 }, z.array(z.string()).default([]));
 
+// Boolean env var. `z.coerce.boolean()` treats ANY non-empty string as true
+// (so "false" → true), so parse explicitly the way pydantic-settings does:
+// only "true"/"1"/"yes" (case-insensitive) are truthy; blank/undefined → false.
+const BOOL = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  const s = v.trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes";
+}, z.boolean().default(false));
+
 const ConfigSchema = z.object({
   // Required.
   PG_DATABASE_URL: z.string().min(1, "PG_DATABASE_URL is required"),
@@ -114,6 +123,22 @@ const ConfigSchema = z.object({
   SYSTEM_PROMPT: z
     .preprocess(EMPTY_TO_UNDEFINED, z.string().optional())
     .transform((v) => v ?? DEFAULT_SYSTEM_PROMPT),
+
+  // ── Auth (Phase 3) ──────────────────────────────────────────────────────
+  // Allow-list gate, read by the NextAuth `signIn` callback via decideAccess()
+  // (reference `config.py` Authorization block + `app.py::oauth_callback`).
+  OPEN_REGISTRATION: BOOL, // true = any GitHub user allowed
+  ALLOWED_EMAILS: JSON_STR_LIST, // exact addresses, e.g. ["alice@example.com"]
+  ALLOWED_EMAIL_DOMAINS: JSON_STR_LIST, // e.g. ["mycompany.com"]
+  ALLOWED_LOGINS: JSON_STR_LIST, // GitHub usernames
+  // NextAuth also reads AUTH_SECRET / AUTH_GITHUB_ID / AUTH_GITHUB_SECRET from
+  // env by convention; they are surfaced here (optional) for a single typed
+  // config surface and so a blank value is treated as unset. Kept optional —
+  // like the reference's `oauth_github_client_id: str | None` — so the app (and
+  // its signed-out sign-in page) still boots before OAuth is configured.
+  AUTH_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  AUTH_GITHUB_ID: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  AUTH_GITHUB_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

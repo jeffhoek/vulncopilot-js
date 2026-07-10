@@ -10,6 +10,10 @@ interface ChatProps {
   documentCount: number | null;
   actionButtons: string[];
   maxHistoryMessages: number;
+  // Authenticated user's display name (falls back to the github:<id> identity).
+  user?: string;
+  // Server action that ends the session; wired to the sign-out button.
+  signOutAction?: () => Promise<void>;
 }
 
 // Phase 2 chat UI: streaming via useChat, markdown rendering, visible tool-call
@@ -21,7 +25,7 @@ interface ChatProps {
 // all_messages()[-N:], which counts internal tool-call/return messages; here N
 // counts UI turns (each turn is one message with tool steps as inner parts). With
 // the default of 50 this is immaterial, but the unit differs by design.
-export function Chat({ documentCount, actionButtons, maxHistoryMessages }: ChatProps) {
+export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, signOutAction }: ChatProps) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({
@@ -61,6 +65,20 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages }: ChatP
                 {label}
               </button>
             ))}
+          </div>
+        )}
+        {user && (
+          <div className="account">
+            <span className="account-user" title={user}>
+              {user}
+            </span>
+            {signOutAction && (
+              <form action={signOutAction}>
+                <button type="submit" className="signout-btn">
+                  Sign out
+                </button>
+              </form>
+            )}
           </div>
         )}
       </aside>

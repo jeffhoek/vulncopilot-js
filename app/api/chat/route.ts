@@ -1,5 +1,6 @@
 import { convertToModelMessages, type UIMessage } from "ai";
 import { mastra } from "@/src/mastra";
+import { auth } from "@/auth";
 
 // pg + Mastra are Node-only; force the Node runtime (not Edge).
 export const runtime = "nodejs";
@@ -10,6 +11,12 @@ export const dynamic = "force-dynamic";
 // them to model messages, and streams the agent's response back as a UI message
 // stream that `useChat` consumes. Auth and rate limiting still come later.
 export async function POST(req: Request): Promise<Response> {
+  // Auth gate (Phase 3): no valid session → 401 before any LLM work.
+  const session = await auth();
+  if (!session?.userId) {
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   let messages: UIMessage[];
   try {
     const body = (await req.json()) as { messages?: UIMessage[] };

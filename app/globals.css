@@ -76,6 +76,85 @@ body {
   opacity: 0.6;
 }
 
+/* Signed-in account block: pinned to the bottom of the sidebar. */
+.account {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e5e5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.account-user {
+  font-size: 0.8rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signout-btn {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.signout-btn:hover {
+  background: #f0f0ff;
+  border-color: #a5b4fc;
+}
+
+/* Signed-out / denied sign-in view (replaces the whole app shell). */
+.signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+  padding: 1.5rem;
+}
+
+.signin-card {
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+
+.signin-card h1 {
+  margin: 0 0 0.2rem;
+  font-size: 1.5rem;
+}
+
+.signin-denied {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #b00020;
+  font-size: 0.85rem;
+}
+
+.signin-btn {
+  margin-top: 1rem;
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  background: #24292f;
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.signin-btn:hover {
+  background: #000;
+}
+
 .chat {
   flex: 1;
   display: flex;
