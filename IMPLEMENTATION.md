@@ -97,8 +97,7 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
       `config.ts` — NextAuth reads them from env directly — so boot never hard-fails
       before OAuth is configured)
 - [x] Unit tests for the allow-list decision function (port `test_oauth_callback.py`)
-- [ ] Verify: real GitHub sign-in succeeds when allow-listed; denied when not
-      (pending Jeff's manual test — needs a GitHub OAuth App + `AUTH_*` secrets in `.env`)
+- [x] Verify: real GitHub sign-in succeeds when allow-listed; denied when not
 - [x] Commit Phase 3
 
 ## Phase 4 — Rate limiting + token accounting
