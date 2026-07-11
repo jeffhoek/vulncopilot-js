@@ -1,0 +1,22 @@
+# Build output & deps (reinstalled/rebuilt inside the image)
+node_modules
+.next
+dist
+
+# Secrets — never copy any real env file into the build context
+.env
+.env.*
+!.env.example
+
+# VCS & local tooling
+.git
+.gitignore
+.claude
+.DS_Store
+
+# Tests, docs, and planning material not needed at runtime
+*.tsbuildinfo
+README.md
+PORTING.md
+IMPLEMENTATION.md
+CLAUDE.md

@@ -117,9 +117,10 @@ export async function POST(req: Request): Promise<Response> {
 
     // format: 'aisdk' yields an AISDKV5OutputStream whose toUIMessageStreamResponse()
     // emits the SSE UI-message protocol useChat expects (text deltas + tool steps).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- aisdk onFinish arg omits `steps` typing; shape verified against @mastra/core stream types.
     const stream = await agent.stream(convertToModelMessages(messages), {
       format: "aisdk",
+      // aisdk onFinish arg omits `steps` typing; shape verified against @mastra/core stream types.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onFinish: onFinish as any,
     });
     return stream.toUIMessageStreamResponse();
