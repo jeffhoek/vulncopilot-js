@@ -69,84 +69,121 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 2 — Chat experience (streaming, history, action buttons)
 
-- [ ] Streaming chat route (agent stream → AI SDK UI message stream)
-- [ ] Real chat UI: `useChat`, markdown rendering, visible tool-call steps
-- [ ] Client-held history trimmed to `MAX_HISTORY_MESSAGES` (default 50)
-- [ ] "Ready! N vulnerability records available." banner (port `get_document_count`)
-- [ ] `ACTION_BUTTONS` quick-query buttons; introduce the JSON-array env convention with
+- [x] Streaming chat route (agent stream → AI SDK UI message stream)
+- [x] Real chat UI: `useChat`, markdown rendering, visible tool-call steps
+- [x] Client-held history trimmed to `MAX_HISTORY_MESSAGES` (default 50)
+- [x] "Ready! N vulnerability records available." banner (port `get_document_count`)
+- [x] `ACTION_BUTTONS` quick-query buttons; introduce the JSON-array env convention with
       blank-tolerant parsing (`""` → `[]`, port of `_decode_json_list`)
-- [ ] Config additions: `MAX_HISTORY_MESSAGES`, `ACTION_BUTTONS`; update `.env.example`
-- [ ] Verify: streamed answer renders; follow-up resolves references ("what CVSS score
+- [x] Config additions: `MAX_HISTORY_MESSAGES`, `ACTION_BUTTONS`; update `.env.example`
+      (both were already documented in `.env.example` from Phase 1)
+- [x] Verify: streamed answer renders; follow-up resolves references ("what CVSS score
       does it have?")
-- [ ] Commit Phase 2
+- [x] Commit Phase 2
 
 ## Phase 3 — Auth (NextAuth GitHub + allow-list)
 
-- [ ] `auth.ts` — NextAuth v5, GitHub provider; `signIn` callback ports the reference
+- [x] `auth.ts` — NextAuth v5, GitHub provider; `signIn` callback ports the reference
       `app.py::oauth_callback` branching exactly: allow if `OPEN_REGISTRATION` → email in
       `ALLOWED_EMAILS` → email domain in `ALLOWED_EMAIL_DOMAINS` → login in
-      `ALLOWED_LOGINS`; else deny + log warning
-- [ ] Identity key = stable numeric GitHub id as `github:<id>` (never login/email),
+      `ALLOWED_LOGINS`; else deny + log warning (branching lives in the pure,
+      unit-tested `src/lib/auth-allowlist.ts::decideAccess`)
+- [x] Identity key = stable numeric GitHub id as `github:<id>` (never login/email),
       carried in JWT/session
-- [ ] Gate the chat page and `/api/chat` (401 without session); sign-in / denied UX
-- [ ] Config additions: `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`,
+- [x] Gate the chat page and `/api/chat` (401 without session); sign-in / denied UX
+- [x] Config additions: `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`,
       `ALLOWED_EMAILS`, `ALLOWED_EMAIL_DOMAINS`, `ALLOWED_LOGINS`, `OPEN_REGISTRATION`
-- [ ] Unit tests for the allow-list decision function (port `test_oauth_callback.py`)
-- [ ] Verify: real GitHub sign-in succeeds when allow-listed; denied when not
-- [ ] Commit Phase 3
+      (`.env.example` already documented these from Phase 1; `AUTH_*` kept optional in
+      `config.ts` — NextAuth reads them from env directly — so boot never hard-fails
+      before OAuth is configured)
+- [x] Unit tests for the allow-list decision function (port `test_oauth_callback.py`)
+- [x] Verify: real GitHub sign-in succeeds when allow-listed; denied when not
+- [x] Commit Phase 3
 
 ## Phase 4 — Rate limiting + token accounting
 
-- [ ] `src/lib/usage.ts` — `checkAndIncrement`: the exact atomic upsert from reference
+- [x] `src/lib/usage.ts` — `checkAndIncrement`: the exact atomic upsert from reference
       `rag/usage.py` (`INSERT … ON CONFLICT (user_identifier, query_date) DO UPDATE …
       RETURNING query_count`); `allowed = new_count <= limit`
-- [ ] `limitFor(userId)` — `ADMIN_DAILY_QUERY_LIMIT` for `ADMIN_USER_IDENTIFIERS`
+- [x] `limitFor(userId)` — `ADMIN_DAILY_QUERY_LIMIT` for `ADMIN_USER_IDENTIFIERS`
       members, else `DAILY_QUERY_LIMIT`
-- [ ] Wrap `/api/chat`: cheap read-only pre-check before the LLM call; authoritative
+- [x] Wrap `/api/chat`: cheap read-only pre-check before the LLM call; authoritative
       `checkAndIncrement` after, with input/output tokens from the run result; withhold
       the answer on the TOCTOU over-limit case. Message verbatim: "You've reached your
       daily limit of {limit} queries. Try again tomorrow."
-- [ ] Config additions: `DAILY_QUERY_LIMIT` (20), `ADMIN_DAILY_QUERY_LIMIT` (100000),
+      **DEVIATION:** streaming cannot withhold an already-sent answer — the pre-check
+      bounds sequential users and the post-run upsert blocks the next request instead.
+      See the FLAGGED DIVERGENCE note in `app/api/chat/route.ts`.
+- [x] Config additions: `DAILY_QUERY_LIMIT` (20), `ADMIN_DAILY_QUERY_LIMIT` (100000),
       `ADMIN_USER_IDENTIFIERS`
-- [ ] Tests: port `test_rate_limit.py` boundary semantics
-- [ ] Verify live with `DAILY_QUERY_LIMIT=2`: third query blocked; `user_usage` row shows
+- [x] Tests: port `test_rate_limit.py` boundary semantics
+- [x] Verify live with `DAILY_QUERY_LIMIT=2`: third query blocked; `user_usage` row shows
       counts + tokens. **Prereq:** the app DB role needs INSERT/UPDATE on `user_usage`
       (+ its id sequence) — confirm on the remote DB first
-- [ ] Commit Phase 4
+- [x] Commit Phase 4
 
 ## Phase 5 — Admin usage dashboard
 
-- [ ] `/admin` server component, **session-gated to `ADMIN_USER_IDENTIFIERS`**
+- [x] `/admin` server component, **session-gated to `ADMIN_USER_IDENTIFIERS`**
       (HTTP Basic / `ADMIN_SECRET` dropped by design)
-- [ ] Port `get_usage_stats` (today/7d/30d query counts, all-time tokens, estimated cost
+- [x] Port `get_usage_stats` (today/7d/30d query counts, all-time tokens, estimated cost
       from `LLM_INPUT_COST_PER_MILLION` / `LLM_OUTPUT_COST_PER_MILLION`)
-- [ ] Config additions: cost-per-million vars; update `.env.example`
-- [ ] Verify: admin sees real rows; non-admin and signed-out are denied
-- [ ] Commit Phase 5
+- [x] Config additions: cost-per-million vars (`.env.example` already documented these from
+      Phase 1; only `config.ts` needed the additions)
+- [x] Verify: admin sees real rows; non-admin and signed-out are denied
+- [x] Commit Phase 5
 
 ## Phase 6 — Public /etl-stats page
 
-- [ ] `/etl-stats` server component reading `etl_runs` (newest first, LIMIT 50), no auth
-- [ ] Port the public-exposure hardening from reference `rag/etl_stats.py`: **never
+- [x] `/etl-stats` server component reading `etl_runs` (newest first, LIMIT 50), no auth
+- [x] Port the public-exposure hardening from reference `rag/etl_stats.py`: **never
       render the raw per-loader `error` field** — status, counts, durations, and a
       generic "failed" only
-- [ ] Verify: renders real ETL run rows from the shared DB
-- [ ] Commit Phase 6
+- [x] Verify: renders real ETL run rows from the shared DB
+- [x] Commit Phase 6
 
 ## Phase 7 — MCP server route
 
-- [ ] `app/api/mcp/route.ts` — `@mastra/mcp` `MCPServer` (streamable-http) exposing the
-      **same** `query` + `retrieve` tool implementations (reuse, don't duplicate)
-- [ ] `x-api-key` check with timing-safe compare against `MCP_API_KEY`; log a warning if
+- [x] `@mastra/mcp` `MCPServer` (streamable-http) exposing the **same** `query` +
+      `retrieve` tool implementations (reuse, don't duplicate)
+      **DEVIATION (route location):** lives in `pages/api/mcp.ts`, NOT
+      `app/api/mcp/route.ts`. `MCPServer.startHTTP` requires Node `http` req/res,
+      which App Router route handlers don't expose (Web `Request`/`Response` only;
+      even the library's serverless path calls `req.on()`/`res.end()`). Pages Router
+      API routes provide native Node req/res — no adapter, no extra dep. Same URL.
+      **DEVIATION (tools):** dropped the scalar `outputSchema: z.string()` from both
+      tools — MCP requires an object output schema, so a scalar makes `MCPServer`
+      emit an invalid `tools/call` result. Matches the reference FastMCP `-> str`
+      tools (no structured schema); agent behavior unchanged.
+      **DEP PIN:** `@mastra/mcp@^0.14.5` (peer `core >=0.20.1 <0.25.0`); latest 1.x
+      needs `core >=1.0`, incompatible with the pinned `@mastra/core@0.20.2`.
+- [x] `x-api-key` check with timing-safe compare against `MCP_API_KEY`; log a warning if
       unset (endpoint would be unauthenticated)
-- [ ] Config addition: `MCP_API_KEY`
-- [ ] Verify: connect with an MCP client and call both tools; wrong key → 401
-- [ ] Commit Phase 7
+- [x] Config addition: `MCP_API_KEY`
+- [x] Verify: connect with an MCP client and call both tools; wrong key → 401
+- [x] Commit Phase 7
 
 ## Phase 8 — Infra polish (optional)
 
-- [ ] Dockerfile (Node), README refresh, lint config
-- [ ] Commit Phase 8
+- [x] Dockerfile (Node), README refresh, lint config
+      **DEVIATION (standalone build needs env):** `next build` imports the page
+      modules during page-data collection, and `config.ts` validates at import
+      (fail-fast by design), so the required vars must be *present* at build
+      time. The Dockerfile passes throwaway placeholders inline to the build
+      RUN only (not image ENV, never in the runner stage); real values are read
+      from the container env at request time (routes are dynamic — nothing is
+      prerendered with placeholders).
+      **FLAG (AUTH_TRUST_HOST):** NextAuth v5 self-hosted (non-Vercel, behind a
+      proxy) rejects requests with `UntrustedHost` unless `AUTH_TRUST_HOST=true`.
+      `pnpm dev` auto-trusts localhost, so this only surfaces in the container.
+      Documented in `.env.example` + README (not hardcoded in `auth.ts`).
+      **FLAG (--env-file ≠ dotenv):** docker/podman `--env-file` passes each line
+      verbatim — no inline-comment or quote stripping like Next's `.env` loader.
+      JSON-array vars (`ALLOWED_LOGINS`, `ACTION_BUTTONS`, `PG_DATABASE_URL`)
+      must be bare `KEY=VALUE`. README documents a separate `docker.env`.
+      **DEP PIN:** `eslint-config-next@15` + `eslint@9` to match Next 15.5 (the
+      `^` ranges otherwise pulled config-next 16 / eslint 10, a major mismatch).
+- [x] Commit Phase 8
 
 ---
 

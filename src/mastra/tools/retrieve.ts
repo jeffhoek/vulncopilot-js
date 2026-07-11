@@ -16,7 +16,9 @@ export const retrieveTool = createTool({
   inputSchema: z.object({
     query: z.string().describe("The search query to find relevant documents."),
   }),
-  outputSchema: z.string(),
+  // No outputSchema — see the note in query.ts: MCP requires an object output
+  // schema, so a scalar z.string() breaks the MCP tools/call result. The tool
+  // returns a plain string, surfaced as MCP text content (reference parity).
   execute: async ({ context }) => {
     // Phase 1 has no tool-step UI yet (Phase 2); log to dev-server stdout.
     console.log("[tool:retrieve]", context.query);

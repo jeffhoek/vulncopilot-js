@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+interface ChatProps {
+  documentCount: number | null;
+  actionButtons: string[];
+  maxHistoryMessages: number;
+  // Authenticated user's display name (falls back to the github:<id> identity).
+  user?: string;
+  // Server action that ends the session; wired to the sign-out button.
+  signOutAction?: () => Promise<void>;
+}
+
+// Phase 2 chat UI: streaming via useChat, markdown rendering, visible tool-call
+// steps, quick-query action buttons, and the "Ready! N records" banner. History
+// is client-held (React state) and trimmed to the last maxHistoryMessages before
+// each request (see prepareSendMessagesRequest below).
+//
+// NOTE (flagged divergence from reference): the reference trims
+// all_messages()[-N:], which counts internal tool-call/return messages; here N
+// counts UI turns (each turn is one message with tool steps as inner parts). With
+// the default of 50 this is immaterial, but the unit differs by design.
+export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, signOutAction }: ChatProps) {
+  const [input, setInput] = useState("");
+  const { messages, sendMessage, status, error } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      // Client-held history, trimmed to the last N messages sent per request.
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: { messages: messages.slice(-maxHistoryMessages) },
+      }),
+    }),
+  });
+
+  const isBusy = status === "submitted" || status === "streaming";
+
+  // Keep the newest content in view as messages arrive / stream in.
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  function submit(text: string) {
+    const t = text.trim();
+    if (!t || isBusy) return;
+    sendMessage({ text: t });
+    setInput("");
+  }
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <h1>VulnCopilot</h1>
+        <p className="tagline">CISA KEV / NIST NVD vulnerability assistant.</p>
+        {actionButtons.length > 0 && (
+          <div className="quick-queries">
+            <span className="qq-label">Quick queries</span>
+            {actionButtons.map((label) => (
+              <button key={label} type="button" className="pill" onClick={() => submit(label)} disabled={isBusy}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {user && (
+          <div className="account">
+            <span className="account-user" title={user}>
+              {user}
+            </span>
+            {signOutAction && (
+              <form action={signOutAction}>
+                <button type="submit" className="signout-btn">
+                  Sign out
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+      </aside>
+
+      <section className="chat">
+        <div className="banner">
+          {documentCount != null
+            ? `Ready! ${documentCount.toLocaleString()} vulnerability records available.`
+            : "Ask about CISA KEV / NIST NVD vulnerabilities."}
+        </div>
+
+        <div className="transcript">
+          {messages.length === 0 && <div className="empty">Ask a question to get started.</div>}
+          {messages.map((m) => (
+            <MessageBubble key={m.id} message={m} />
+          ))}
+          {status === "submitted" && <div style={{ color: "#888" }}>Thinking…</div>}
+          {error &&
+            (/^You've reached your daily limit/.test(error.message) ? (
+              // Phase 4: the rate-limit body is a user-facing notice, not a fault —
+              // render the verbatim message without the "Error:" framing.
+              <div style={{ color: "#8a6d00" }}>{error.message}</div>
+            ) : (
+              <div style={{ color: "#b00020" }}>Error: {error.message}</div>
+            ))}
+          <div ref={endRef} />
+        </div>
+
+        <form
+          className="composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit(input);
+          }}
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Tell me about Log4Shell…"
+            style={{ flex: 1, padding: "0.6rem 0.75rem", borderRadius: 8, border: "1px solid #ccc" }}
+          />
+          <button
+            type="submit"
+            disabled={isBusy}
+            style={{ padding: "0.6rem 1.2rem", borderRadius: 8, border: "none", background: "#4f46e5", color: "#fff", cursor: "pointer" }}
+          >
+            Send
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function MessageBubble({ message }: { message: UIMessage }) {
+  const isUser = message.role === "user";
+  return (
+    <div
+      style={{
+        padding: "0.75rem 1rem",
+        borderRadius: 8,
+        background: isUser ? "#eef2ff" : "#f5f5f5",
+      }}
+    >
+      <strong style={{ display: "block", fontSize: "0.75rem", color: "#888", marginBottom: 4 }}>
+        {isUser ? "You" : "Assistant"}
+      </strong>
+      {message.parts.map((part, i) => {
+        if (part.type === "text") {
+          return (
+            <div key={i} className="md">
+              {/* remark-gfm enables GFM tables/strikethrough/autolinks — base
+                  react-markdown is CommonMark-only and renders tables as raw text. */}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
+            </div>
+          );
+        }
+        // Static tool parts arrive as `tool-<name>`; dynamically-registered tools
+        // as `dynamic-tool`. Show a small step chip for either so the tool call is
+        // visible in the transcript.
+        if (part.type === "dynamic-tool") {
+          return <ToolStep key={i} name={part.toolName} state={part.state} />;
+        }
+        if (part.type.startsWith("tool-")) {
+          return <ToolStep key={i} name={part.type.slice("tool-".length)} state={(part as { state?: string }).state} />;
+        }
+        return null;
+      })}
+    </div>
+  );
+}
+
+function ToolStep({ name, state }: { name: string; state?: string }) {
+  const done = state === "output-available";
+  const failed = state === "output-error";
+  const label = failed ? "failed" : done ? "done" : "running…";
+  return (
+    <div
+      style={{
+        display: "inline-block",
+        margin: "0.25rem 0",
+        padding: "0.15rem 0.5rem",
+        borderRadius: 6,
+        background: "#eaeaea",
+        color: "#555",
+        fontSize: "0.75rem",
+        fontFamily: "ui-monospace, monospace",
+      }}
+    >
+      🔧 {name} · {label}
+    </div>
+  );
+}

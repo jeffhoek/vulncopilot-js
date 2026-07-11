@@ -64,6 +64,31 @@ Answer concisely. If the answer is not in the data, say so. When the user asks a
 const EMPTY_TO_UNDEFINED = (v: unknown) =>
   typeof v === "string" && v.trim() === "" ? undefined : v;
 
+// JSON-array env var (e.g. ACTION_BUTTONS=["a","b"]) that also tolerates a blank
+// value as []. Ported from reference `config.py::_decode_json_list`: a var that
+// is defined but empty (common in CI/pipeline variables) must not crash boot. A
+// non-blank value that fails to parse is returned as-is so the array validation
+// reports a clear env error instead of throwing an uncaught SyntaxError.
+const JSON_STR_LIST = z.preprocess((v) => {
+  if (typeof v !== "string") return v; // undefined → falls through to .default([])
+  const s = v.trim();
+  if (s === "") return [];
+  try {
+    return JSON.parse(s);
+  } catch {
+    return v;
+  }
+}, z.array(z.string()).default([]));
+
+// Boolean env var. `z.coerce.boolean()` treats ANY non-empty string as true
+// (so "false" → true), so parse explicitly the way pydantic-settings does:
+// only "true"/"1"/"yes" (case-insensitive) are truthy; blank/undefined → false.
+const BOOL = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  const s = v.trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes";
+}, z.boolean().default(false));
+
 const ConfigSchema = z.object({
   // Required.
   PG_DATABASE_URL: z.string().min(1, "PG_DATABASE_URL is required"),
@@ -72,6 +97,12 @@ const ConfigSchema = z.object({
 
   // Optional with reference-matching defaults.
   TOP_K: z.coerce.number().int().positive().default(5),
+  // Client-held history is trimmed to the last N messages sent per request
+  // (reference `config.py::max_history_messages`). See the note in app/chat.tsx:
+  // the reference counts internal tool messages, ours counts UI turns.
+  MAX_HISTORY_MESSAGES: z.coerce.number().int().positive().default(50),
+  // Quick-query buttons shown in the chat UI (reference `action_buttons`).
+  ACTION_BUTTONS: JSON_STR_LIST,
   // Pinned to the model the ETL side embedded with (1536-d). Changing it
   // silently breaks cosine search — see CLAUDE.md data contract.
   EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
@@ -92,6 +123,45 @@ const ConfigSchema = z.object({
   SYSTEM_PROMPT: z
     .preprocess(EMPTY_TO_UNDEFINED, z.string().optional())
     .transform((v) => v ?? DEFAULT_SYSTEM_PROMPT),
+
+  // ── Auth (Phase 3) ──────────────────────────────────────────────────────
+  // Allow-list gate, read by the NextAuth `signIn` callback via decideAccess()
+  // (reference `config.py` Authorization block + `app.py::oauth_callback`).
+  OPEN_REGISTRATION: BOOL, // true = any GitHub user allowed
+  ALLOWED_EMAILS: JSON_STR_LIST, // exact addresses, e.g. ["alice@example.com"]
+  ALLOWED_EMAIL_DOMAINS: JSON_STR_LIST, // e.g. ["mycompany.com"]
+  ALLOWED_LOGINS: JSON_STR_LIST, // GitHub usernames
+  // NextAuth also reads AUTH_SECRET / AUTH_GITHUB_ID / AUTH_GITHUB_SECRET from
+  // env by convention; they are surfaced here (optional) for a single typed
+  // config surface and so a blank value is treated as unset. Kept optional —
+  // like the reference's `oauth_github_client_id: str | None` — so the app (and
+  // its signed-out sign-in page) still boots before OAuth is configured.
+  AUTH_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  AUTH_GITHUB_ID: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  AUTH_GITHUB_SECRET: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+
+  // ── Rate limiting (Phase 4) ─────────────────────────────────────────────
+  // Per-user daily query cap, counted atomically in `user_usage` (reference
+  // `config.py` + `rag/usage.py`). Admins listed in ADMIN_USER_IDENTIFIERS get
+  // ADMIN_DAILY_QUERY_LIMIT and (Phase 5) access to /admin. Identifiers are the
+  // stable `github:<id>` keys, JSON-array like the allow-list fields.
+  DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(20),
+  ADMIN_DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(100000),
+  ADMIN_USER_IDENTIFIERS: JSON_STR_LIST,
+
+  // ── Admin dashboard cost estimation (Phase 5) ───────────────────────────
+  // USD per million tokens, used only by /admin to estimate spend from the
+  // recorded token totals (reference `config.py::llm_input/output_cost_per_million`).
+  // One source of truth: usage.py's getUsageStats takes these as arguments
+  // rather than owning its own constants.
+  LLM_INPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(3.0),
+  LLM_OUTPUT_COST_PER_MILLION: z.coerce.number().nonnegative().default(15.0),
+
+  // ── MCP server (Phase 7) ────────────────────────────────────────────────
+  // Guards /api/mcp via the x-api-key header (timing-safe compare). Optional:
+  // if unset, the route logs a warning and serves UNAUTHENTICATED — mirroring
+  // reference `mcp_server/server.py` (mcp_api_key: str | None). Blank → unset.
+  MCP_API_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

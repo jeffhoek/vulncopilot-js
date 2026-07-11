@@ -88,20 +88,51 @@ endpoint unauthenticated — set it before deploying.
 
 ```bash
 pnpm dev      # dev server
-pnpm build    # production build
+pnpm build    # production build (emits the standalone server bundle)
 pnpm start    # run the production build
 pnpm test     # Vitest
-pnpm lint     # ESLint
+pnpm lint     # ESLint (next/core-web-vitals + next/typescript)
 ```
+
+## Docker
+
+The app builds into a self-contained image (Next.js `output: "standalone"`, non-root
+runtime user). No database or secrets are baked in — they're supplied at run time.
+
+```bash
+podman build -t vulncopilot .          # or: docker build -t vulncopilot .
+podman run --rm -p 3000:3000 --env-file docker.env -e AUTH_TRUST_HOST=true vulncopilot
+```
+
+The build uses throwaway placeholder values for the required env vars (config is
+validated at import, which Next triggers during build-time page-data collection); real
+values come from `--env-file` / your orchestrator at run time.
+
+Deploy-time env notes:
+
+- **`--env-file` is NOT dotenv.** docker/podman pass each line verbatim — they do **not**
+  strip inline `# comments` or surrounding quotes the way Next's `.env` loader does. So a
+  Next-style line like `ALLOWED_LOGINS=["a"]  # note` reaches the app as the literal
+  string `["a"]  # note` and fails JSON-array parsing. For containers, keep a separate
+  `docker.env` with **bare** `KEY=VALUE` lines (no inline comments, no quotes); the
+  JSON-array convention still works as long as the value is bare (`ALLOWED_LOGINS=["a"]`).
+- **`AUTH_TRUST_HOST=true` is required** when self-hosting behind a proxy (anything other
+  than Vercel). Without it NextAuth rejects requests with `UntrustedHost` and sign-in
+  breaks. `pnpm dev` auto-trusts localhost, so this only bites in the container.
+- Set `AUTH_URL` to the app's public origin and `MCP_API_KEY` before exposing the app.
+- The image listens on `PORT` (default 3000) and binds `0.0.0.0`.
 
 ## Project layout
 
 ```
-app/            Next.js routes (chat UI, /admin, /etl-stats, api/*)
+app/            Next.js App Router routes (chat UI, /admin, /etl-stats, api/chat, api/auth)
+pages/api/      Pages Router — api/mcp.ts (needs native Node req/res; see IMPLEMENTATION.md)
+auth.ts         NextAuth (GitHub provider + allow-list gate)
 src/mastra/     Mastra instance, agent, tools, vector access
   agents/       RAG agent (model + system prompt + tools)
   tools/        query.ts (SQL) · retrieve.ts (semantic search)
-lib/            config (zod env), auth, rate limiting, sql guards
+src/lib/        config (zod env), auth allow-list, rate limiting, sql guards, db pool
+Dockerfile      Multi-stage build → standalone, non-root runtime image
 ```
 
 ## Related

@@ -38,6 +38,20 @@ export async function runReadOnlyQuery(sql: string): Promise<QueryResult> {
   }
 }
 
+/**
+ * Distinct-vulnerability count for the "Ready! N …" banner. Deliberately diverges
+ * from reference `rag/vector_store.py::get_document_count`, which sums KEV + NVD
+ * rows: KEV entries are CVEs that also appear in NVD, so that sum double-counts.
+ * NVD is the superset corpus, so its row count is the count of distinct
+ * vulnerabilities. pg returns bigint counts as strings — coerce to number.
+ */
+export async function getDocumentCount(): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT count(*) AS count FROM nvd_vulnerabilities`,
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 /** True if `err` is a Postgres-side error (SQLSTATE), vs an unexpected error. */
 export function isPostgresError(err: unknown): err is Error & { code?: string } {
   return (
