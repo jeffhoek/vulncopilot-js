@@ -165,8 +165,25 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 8 — Infra polish (optional)
 
-- [ ] Dockerfile (Node), README refresh, lint config
-- [ ] Commit Phase 8
+- [x] Dockerfile (Node), README refresh, lint config
+      **DEVIATION (standalone build needs env):** `next build` imports the page
+      modules during page-data collection, and `config.ts` validates at import
+      (fail-fast by design), so the required vars must be *present* at build
+      time. The Dockerfile passes throwaway placeholders inline to the build
+      RUN only (not image ENV, never in the runner stage); real values are read
+      from the container env at request time (routes are dynamic — nothing is
+      prerendered with placeholders).
+      **FLAG (AUTH_TRUST_HOST):** NextAuth v5 self-hosted (non-Vercel, behind a
+      proxy) rejects requests with `UntrustedHost` unless `AUTH_TRUST_HOST=true`.
+      `pnpm dev` auto-trusts localhost, so this only surfaces in the container.
+      Documented in `.env.example` + README (not hardcoded in `auth.ts`).
+      **FLAG (--env-file ≠ dotenv):** docker/podman `--env-file` passes each line
+      verbatim — no inline-comment or quote stripping like Next's `.env` loader.
+      JSON-array vars (`ALLOWED_LOGINS`, `ACTION_BUTTONS`, `PG_DATABASE_URL`)
+      must be bare `KEY=VALUE`. README documents a separate `docker.env`.
+      **DEP PIN:** `eslint-config-next@15` + `eslint@9` to match Next 15.5 (the
+      `^` ranges otherwise pulled config-next 16 / eslint 10, a major mismatch).
+- [x] Commit Phase 8
 
 ---
 
