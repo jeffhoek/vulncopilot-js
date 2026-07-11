@@ -144,13 +144,24 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
 
 ## Phase 7 — MCP server route
 
-- [ ] `app/api/mcp/route.ts` — `@mastra/mcp` `MCPServer` (streamable-http) exposing the
-      **same** `query` + `retrieve` tool implementations (reuse, don't duplicate)
-- [ ] `x-api-key` check with timing-safe compare against `MCP_API_KEY`; log a warning if
+- [x] `@mastra/mcp` `MCPServer` (streamable-http) exposing the **same** `query` +
+      `retrieve` tool implementations (reuse, don't duplicate)
+      **DEVIATION (route location):** lives in `pages/api/mcp.ts`, NOT
+      `app/api/mcp/route.ts`. `MCPServer.startHTTP` requires Node `http` req/res,
+      which App Router route handlers don't expose (Web `Request`/`Response` only;
+      even the library's serverless path calls `req.on()`/`res.end()`). Pages Router
+      API routes provide native Node req/res — no adapter, no extra dep. Same URL.
+      **DEVIATION (tools):** dropped the scalar `outputSchema: z.string()` from both
+      tools — MCP requires an object output schema, so a scalar makes `MCPServer`
+      emit an invalid `tools/call` result. Matches the reference FastMCP `-> str`
+      tools (no structured schema); agent behavior unchanged.
+      **DEP PIN:** `@mastra/mcp@^0.14.5` (peer `core >=0.20.1 <0.25.0`); latest 1.x
+      needs `core >=1.0`, incompatible with the pinned `@mastra/core@0.20.2`.
+- [x] `x-api-key` check with timing-safe compare against `MCP_API_KEY`; log a warning if
       unset (endpoint would be unauthenticated)
-- [ ] Config addition: `MCP_API_KEY`
-- [ ] Verify: connect with an MCP client and call both tools; wrong key → 401
-- [ ] Commit Phase 7
+- [x] Config addition: `MCP_API_KEY`
+- [x] Verify: connect with an MCP client and call both tools; wrong key → 401
+- [x] Commit Phase 7
 
 ## Phase 8 — Infra polish (optional)
 
