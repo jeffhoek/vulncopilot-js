@@ -1,4 +1,10 @@
-import { convertToModelMessages, type UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessage,
+} from "ai";
+import { toAISdkStream } from "@mastra/ai-sdk";
 import { mastra } from "@/src/mastra";
 import { auth } from "@/auth";
 import { config } from "@/src/lib/config";
@@ -79,51 +85,50 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const agent = mastra.getAgent("ragAgent");
-    // Authoritative gate + token accounting. Runs in the model-output onFinish
-    // (fired in-band as the stream is consumed), NOT the UI-stream onFinish. The
-    // latter would force us to await `stream.totalUsage`, a promise on a teed
-    // branch that can hang when the UI stream is the branch actually being pulled
-    // — which silently skipped the increment. Here `steps` arrives directly in the
-    // callback; summing each step's usage gives the whole run's tokens (analogous
-    // to pydantic-ai's result.usage()). Server-side post-stream work like this is
-    // fine on a persistent Node server (see `runtime = "nodejs"`); a serverless
-    // deploy would need waitUntil to guarantee it completes.
-    const onFinish = async (event: {
-      steps?: Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>;
-    }) => {
-      try {
-        const steps = event.steps ?? [];
-        const inputTokens = steps.reduce((n, s) => n + (s.usage?.inputTokens ?? 0), 0);
-        const outputTokens = steps.reduce((n, s) => n + (s.usage?.outputTokens ?? 0), 0);
-        const { allowed, newCount } = await checkAndIncrement(
-          pool,
-          userId,
-          limit,
-          inputTokens,
-          outputTokens,
-        );
-        console.log(
-          `[rate-limit] recorded user=${userId} count=${newCount} limit=${limit} in=${inputTokens} out=${outputTokens} allowed=${allowed}`,
-        );
-        if (!allowed) {
-          // Cannot withhold a streamed answer (see FLAGGED DIVERGENCE above);
-          // record + log so the next request is blocked at the pre-check.
-          console.warn(`Rate limit hit: user=${userId} count=${newCount} limit=${limit}`);
-        }
-      } catch (err) {
-        console.error("Usage accounting failed", err);
-      }
-    };
-
-    // format: 'aisdk' yields an AISDKV5OutputStream whose toUIMessageStreamResponse()
-    // emits the SSE UI-message protocol useChat expects (text deltas + tool steps).
+    // Authoritative gate + token accounting. Runs in Mastra's stream onFinish,
+    // fired in-band as the stream is consumed — the event carries the run's
+    // `totalUsage` (all steps summed) directly, so there is no promise to await
+    // on a teed branch (the pre-v1 hang pitfall) and no manual step summing
+    // (analogous to pydantic-ai's result.usage()). Server-side post-stream work
+    // like this is fine on a persistent Node server (see `runtime = "nodejs"`);
+    // a serverless deploy would need waitUntil to guarantee it completes.
     const stream = await agent.stream(convertToModelMessages(messages), {
-      format: "aisdk",
-      // aisdk onFinish arg omits `steps` typing; shape verified against @mastra/core stream types.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onFinish: onFinish as any,
+      onFinish: async (event) => {
+        try {
+          const inputTokens = event.totalUsage.inputTokens ?? 0;
+          const outputTokens = event.totalUsage.outputTokens ?? 0;
+          const { allowed, newCount } = await checkAndIncrement(
+            pool,
+            userId,
+            limit,
+            inputTokens,
+            outputTokens,
+          );
+          console.log(
+            `[rate-limit] recorded user=${userId} count=${newCount} limit=${limit} in=${inputTokens} out=${outputTokens} allowed=${allowed}`,
+          );
+          if (!allowed) {
+            // Cannot withhold a streamed answer (see FLAGGED DIVERGENCE above);
+            // record + log so the next request is blocked at the pre-check.
+            console.warn(`Rate limit hit: user=${userId} count=${newCount} limit=${limit}`);
+          }
+        } catch (err) {
+          console.error("Usage accounting failed", err);
+        }
+      },
     });
-    return stream.toUIMessageStreamResponse();
+
+    // v1 removed `format: 'aisdk'`; toAISdkStream (@mastra/ai-sdk) converts the
+    // Mastra stream into the AI SDK UI-message chunk stream (text deltas + tool
+    // steps), which createUIMessageStreamResponse serves as the SSE protocol
+    // useChat expects. `originalMessages` prevents duplicated assistant messages.
+    const uiMessageStream = createUIMessageStream({
+      originalMessages: messages,
+      execute: ({ writer }) => {
+        writer.merge(toAISdkStream(stream, { from: "agent" }));
+      },
+    });
+    return createUIMessageStreamResponse({ stream: uiMessageStream });
   } catch (err) {
     console.error("Chat route error", err);
     return Response.json({ error: "Failed to generate a response." }, { status: 500 });

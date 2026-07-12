@@ -9,11 +9,12 @@ import { retrieveTool } from "../tools/retrieve";
 // exposes it directly: low | medium | high | xhigh | max); when blank we omit
 // it, mirroring the reference's handling for models without effort support.
 export const ragAgent = new Agent({
+  id: "rag-agent",
   name: "rag-agent",
   instructions: config.SYSTEM_PROMPT,
   model: anthropic(config.LLM_MODEL),
   tools: { query: queryTool, retrieve: retrieveTool },
-  defaultVNextStreamOptions: config.LLM_EFFORT
+  defaultOptions: config.LLM_EFFORT
     ? { providerOptions: { anthropic: { effort: config.LLM_EFFORT } } }
     : {},
 });

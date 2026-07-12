@@ -19,10 +19,10 @@ export const retrieveTool = createTool({
   // No outputSchema — see the note in query.ts: MCP requires an object output
   // schema, so a scalar z.string() breaks the MCP tools/call result. The tool
   // returns a plain string, surfaced as MCP text content (reference parity).
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     // Phase 1 has no tool-step UI yet (Phase 2); log to dev-server stdout.
-    console.log("[tool:retrieve]", context.query);
-    const embedding = await generateEmbedding(context.query);
+    console.log("[tool:retrieve]", inputData.query);
+    const embedding = await generateEmbedding(inputData.query);
     const vectorLiteral = `[${embedding.join(",")}]`;
 
     const result = await pool.query<{ content: string }>(
