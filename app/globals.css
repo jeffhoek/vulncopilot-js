@@ -1,3 +1,79 @@
+/* ── Theme tokens ────────────────────────────────────────────────────────────
+   Light values are the defaults on :root; the dark overrides apply when the
+   pre-paint script in layout.tsx sets data-theme="dark" on <html> (from the
+   user's saved choice or the OS preference). No @media copy is needed because
+   that script always writes an explicit data-theme. */
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #666; /* tagline, account-user */
+  --fg-faint: #999; /* qq-label; also role label, empty state, thinking */
+  --fg-banner: #444;
+  --border: #e5e5e5; /* sidebar border, account divider */
+  --border-soft: #eee; /* banner/composer dividers */
+  --border-strong: #ccc; /* pill, signout, input borders */
+  --border-table: #d4d4d4; /* md tables, admin/etl scroll frames */
+  --border-row: #e2e2e2; /* admin/etl row dividers */
+  --surface: #fafafa; /* sidebar bg */
+  --surface-raised: #fff; /* pill, signout-btn, input bg */
+  --surface-code: #ececec; /* code, pre, th backgrounds */
+  --surface-chip: #eaeaea; /* tool-step chip */
+  --chip-fg: #555;
+  --bubble-user: #eef2ff;
+  --bubble-assistant: #f5f5f5;
+  --hover: #f0f0ff; /* pill/signout hover bg */
+  --hover-border: #a5b4fc;
+  --accent: #4f46e5; /* send button */
+  --accent-fg: #fff;
+  --danger: #b00020;
+  --danger-bg: #fdecea; /* signin-denied */
+  --warning: #8a6d00; /* rate-limit notice */
+  --gh-btn: #24292f; /* GitHub sign-in button */
+  --gh-btn-hover: #000;
+  --gh-btn-fg: #fff;
+  --ok: #1a7f37; /* etl badge */
+  --ok-bg: #1a7f3722;
+  --fail: #c02833;
+  --fail-bg: #c0283322;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111214;
+  --fg: #e4e4e7;
+  --fg-muted: #a1a1aa;
+  --fg-faint: #71717a;
+  --fg-banner: #c4c4cc;
+  --border: #2a2b2f;
+  --border-soft: #232428;
+  --border-strong: #3f4046;
+  --border-table: #3a3b40;
+  --border-row: #2e2f34;
+  --surface: #18191c;
+  --surface-raised: #1f2024;
+  --surface-code: #26272c;
+  --surface-chip: #2a2b30;
+  --chip-fg: #b8b8c0;
+  --bubble-user: #23264a;
+  --bubble-assistant: #1c1d21;
+  --hover: #26284a;
+  --hover-border: #4f46e5;
+  --accent: #6366f1;
+  --accent-fg: #fff;
+  --danger: #ff7b8a;
+  --danger-bg: #3a1d22;
+  --warning: #d4a72c;
+  --gh-btn: #30363d; /* must stay visible on dark bg */
+  --gh-btn-hover: #3f464e;
+  --gh-btn-fg: #fff;
+  --ok: #3fb950;
+  --ok-bg: #3fb95022;
+  --fail: #f85149;
+  --fail-bg: #f8514922;
+}
+
 *,
 *::before,
 *::after {
@@ -8,6 +84,8 @@ html,
 body {
   margin: 0;
   height: 100%;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 /* ── App shell: fixed sidebar + independently scrolling chat column ──────────
@@ -18,7 +96,7 @@ body {
   display: flex;
   height: 100dvh;
   font-family: system-ui, sans-serif;
-  color: #1a1a1a;
+  color: var(--fg);
 }
 
 .sidebar {
@@ -26,8 +104,8 @@ body {
   flex-shrink: 0;
   overflow-y: auto;
   padding: 1.25rem 1rem;
-  border-right: 1px solid #e5e5e5;
-  background: #fafafa;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .sidebar h1 {
@@ -37,7 +115,7 @@ body {
 
 .sidebar .tagline {
   margin: 0 0 1.25rem;
-  color: #666;
+  color: var(--fg-muted);
   font-size: 0.85rem;
 }
 
@@ -52,14 +130,14 @@ body {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #999;
+  color: var(--fg-faint);
 }
 
 .pill {
   padding: 0.45rem 0.7rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-raised);
   color: inherit;
   font-size: 0.85rem;
   text-align: left;
@@ -67,8 +145,8 @@ body {
 }
 
 .pill:hover:not(:disabled) {
-  background: #f0f0ff;
-  border-color: #a5b4fc;
+  background: var(--hover);
+  border-color: var(--hover-border);
 }
 
 .pill:disabled {
@@ -80,7 +158,7 @@ body {
 .account {
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -88,25 +166,28 @@ body {
 
 .account-user {
   font-size: 0.8rem;
-  color: #666;
+  color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.signout-btn {
+.signout-btn,
+.theme-toggle {
   padding: 0.35rem 0.6rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-raised);
   color: inherit;
   font-size: 0.8rem;
   cursor: pointer;
+  text-align: left;
 }
 
-.signout-btn:hover {
-  background: #f0f0ff;
-  border-color: #a5b4fc;
+.signout-btn:hover,
+.theme-toggle:hover {
+  background: var(--hover);
+  border-color: var(--hover-border);
 }
 
 /* Signed-out / denied sign-in view (replaces the whole app shell). */
@@ -116,7 +197,7 @@ body {
   justify-content: center;
   height: 100dvh;
   font-family: system-ui, sans-serif;
-  color: #1a1a1a;
+  color: var(--fg);
   padding: 1.5rem;
 }
 
@@ -135,8 +216,8 @@ body {
   margin: 1rem 0;
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  background: #fdecea;
-  color: #b00020;
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 0.85rem;
 }
 
@@ -145,14 +226,14 @@ body {
   padding: 0.6rem 1.2rem;
   border: none;
   border-radius: 8px;
-  background: #24292f;
-  color: #fff;
+  background: var(--gh-btn);
+  color: var(--gh-btn-fg);
   font-size: 0.95rem;
   cursor: pointer;
 }
 
 .signin-btn:hover {
-  background: #000;
+  background: var(--gh-btn-hover);
 }
 
 .chat {
@@ -165,8 +246,8 @@ body {
 
 .banner {
   padding: 0.9rem 1.5rem;
-  border-bottom: 1px solid #eee;
-  color: #444;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--fg-banner);
   font-size: 0.95rem;
 }
 
@@ -182,15 +263,84 @@ body {
 
 .transcript .empty {
   margin: auto;
-  color: #aaa;
+  color: var(--fg-faint);
   font-size: 0.9rem;
+}
+
+/* Chat message bubbles (rendered by <MessageBubble> in chat.tsx). */
+.bubble {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.bubble-user {
+  background: var(--bubble-user);
+}
+
+.bubble-assistant {
+  background: var(--bubble-assistant);
+}
+
+.bubble .role {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-faint);
+  margin-bottom: 4px;
+}
+
+/* Transient transcript notices. */
+.thinking {
+  color: var(--fg-faint);
+}
+
+.notice-limit {
+  color: var(--warning);
+}
+
+.notice-error {
+  color: var(--danger);
+}
+
+/* Tool-call step chip ("🔧 query · done") shown inline in assistant bubbles. */
+.tool-step {
+  display: inline-block;
+  margin: 0.25rem 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--surface-chip);
+  color: var(--chip-fg);
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
 }
 
 .composer {
   display: flex;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border-soft);
+}
+
+.composer input {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--fg);
+}
+
+.composer .send-btn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+
+.composer .send-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 /* Narrow screens: sidebar becomes a horizontal, scrollable pill bar on top. */
@@ -202,7 +352,7 @@ body {
     width: auto;
     padding: 0.75rem 1rem;
     border-right: none;
-    border-bottom: 1px solid #e5e5e5;
+    border-bottom: 1px solid var(--border);
   }
   .sidebar h1,
   .sidebar .tagline,
@@ -259,14 +409,14 @@ body {
 }
 
 .md code {
-  background: #ececec;
+  background: var(--surface-code);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-size: 0.85em;
 }
 
 .md pre {
-  background: #ececec;
+  background: var(--surface-code);
   padding: 0.75rem;
   border-radius: 6px;
   overflow-x: auto;
@@ -290,21 +440,21 @@ body {
 
 .md th,
 .md td {
-  border: 1px solid #d4d4d4;
+  border: 1px solid var(--border-table);
   padding: 0.35rem 0.6rem;
   text-align: left;
   vertical-align: top;
 }
 
 .md th {
-  background: #ececec;
+  background: var(--surface-code);
   font-weight: 600;
 }
 
 /* /admin usage dashboard (Phase 5). Port of the reference dashboard.html look. */
 .admin {
   font-family: system-ui, sans-serif;
-  color: #1a1a1a;
+  color: var(--fg);
   padding: 1.5rem;
   line-height: 1.4;
 }
@@ -328,7 +478,7 @@ body {
 .admin-scroll {
   overflow: auto;
   max-height: 80vh;
-  border: 1px solid #d4d4d4;
+  border: 1px solid var(--border-table);
   border-radius: 8px;
 }
 
@@ -342,7 +492,7 @@ body {
 .admin-table td {
   text-align: left;
   padding: 0.55rem 0.8rem;
-  border-bottom: 1px solid #e2e2e2;
+  border-bottom: 1px solid var(--border-row);
   vertical-align: top;
   white-space: nowrap;
 }
@@ -350,7 +500,7 @@ body {
 .admin-table th {
   position: sticky;
   top: 0;
-  background: #ececec;
+  background: var(--surface-code);
   font-weight: 600;
 }
 
@@ -364,7 +514,7 @@ body {
    etl_stats.py template look. Shares the admin table styling conventions. */
 .etl {
   font-family: system-ui, sans-serif;
-  color: #1a1a1a;
+  color: var(--fg);
   padding: 1.5rem;
   line-height: 1.4;
 }
@@ -388,7 +538,7 @@ body {
 .etl-scroll {
   overflow: auto;
   max-height: 80vh;
-  border: 1px solid #d4d4d4;
+  border: 1px solid var(--border-table);
   border-radius: 8px;
 }
 
@@ -402,14 +552,14 @@ body {
 .etl-table td {
   text-align: left;
   padding: 0.55rem 0.8rem;
-  border-bottom: 1px solid #e2e2e2;
+  border-bottom: 1px solid var(--border-row);
   vertical-align: top;
 }
 
 .etl-table th {
   position: sticky;
   top: 0;
-  background: #ececec;
+  background: var(--surface-code);
   font-weight: 600;
 }
 
@@ -422,13 +572,13 @@ body {
 }
 
 .etl-badge.ok {
-  background: #1a7f3722;
-  color: #1a7f37;
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 
 .etl-badge.fail {
-  background: #c0283322;
-  color: #c02833;
+  background: var(--fail-bg);
+  color: var(--fail);
 }
 
 .etl-loaders {

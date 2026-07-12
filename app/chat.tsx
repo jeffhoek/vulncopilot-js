@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ThemeToggle } from "./theme-toggle";
 
 interface ChatProps {
   documentCount: number | null;
@@ -72,6 +73,7 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
             <span className="account-user" title={user}>
               {user}
             </span>
+            <ThemeToggle />
             {signOutAction && (
               <form action={signOutAction}>
                 <button type="submit" className="signout-btn">
@@ -95,14 +97,14 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
-          {status === "submitted" && <div style={{ color: "#888" }}>Thinking…</div>}
+          {status === "submitted" && <div className="thinking">Thinking…</div>}
           {error &&
             (/^You've reached your daily limit/.test(error.message) ? (
               // Phase 4: the rate-limit body is a user-facing notice, not a fault —
               // render the verbatim message without the "Error:" framing.
-              <div style={{ color: "#8a6d00" }}>{error.message}</div>
+              <div className="notice-limit">{error.message}</div>
             ) : (
-              <div style={{ color: "#b00020" }}>Error: {error.message}</div>
+              <div className="notice-error">Error: {error.message}</div>
             ))}
           <div ref={endRef} />
         </div>
@@ -118,13 +120,8 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Tell me about Log4Shell…"
-            style={{ flex: 1, padding: "0.6rem 0.75rem", borderRadius: 8, border: "1px solid #ccc" }}
           />
-          <button
-            type="submit"
-            disabled={isBusy}
-            style={{ padding: "0.6rem 1.2rem", borderRadius: 8, border: "none", background: "#4f46e5", color: "#fff", cursor: "pointer" }}
-          >
+          <button type="submit" className="send-btn" disabled={isBusy}>
             Send
           </button>
         </form>
@@ -136,16 +133,8 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
 function MessageBubble({ message }: { message: UIMessage }) {
   const isUser = message.role === "user";
   return (
-    <div
-      style={{
-        padding: "0.75rem 1rem",
-        borderRadius: 8,
-        background: isUser ? "#eef2ff" : "#f5f5f5",
-      }}
-    >
-      <strong style={{ display: "block", fontSize: "0.75rem", color: "#888", marginBottom: 4 }}>
-        {isUser ? "You" : "Assistant"}
-      </strong>
+    <div className={isUser ? "bubble bubble-user" : "bubble bubble-assistant"}>
+      <strong className="role">{isUser ? "You" : "Assistant"}</strong>
       {message.parts.map((part, i) => {
         if (part.type === "text") {
           return (
@@ -176,18 +165,7 @@ function ToolStep({ name, state }: { name: string; state?: string }) {
   const failed = state === "output-error";
   const label = failed ? "failed" : done ? "done" : "running…";
   return (
-    <div
-      style={{
-        display: "inline-block",
-        margin: "0.25rem 0",
-        padding: "0.15rem 0.5rem",
-        borderRadius: 6,
-        background: "#eaeaea",
-        color: "#555",
-        fontSize: "0.75rem",
-        fontFamily: "ui-monospace, monospace",
-      }}
-    >
+    <div className="tool-step">
       🔧 {name} · {label}
     </div>
   );
