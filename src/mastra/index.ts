@@ -9,9 +9,8 @@ export const mastra: Mastra =
   globalForMastra.__mastra ??
   new Mastra({
     agents: { ragAgent },
-    // Disable the deprecated OTel telemetry (avoids the "instrumentation file
-    // was not loaded" warning when Mastra runs embedded in Next.js).
-    telemetry: { enabled: false },
+    // v1 dropped the deprecated OTel `telemetry` option; observability is now
+    // opt-in via @mastra/observability, so nothing to disable here.
   });
 
 if (!globalForMastra.__mastra) {

@@ -15,6 +15,7 @@ const globalForMcp = globalThis as unknown as { __mcpServer?: MCPServer };
 export const mcpServer: MCPServer =
   globalForMcp.__mcpServer ??
   new MCPServer({
+    id: "kev-nvd-rag",
     name: "kev-nvd-rag",
     version: "1.0.0",
     tools: { query: queryTool, retrieve: retrieveTool },

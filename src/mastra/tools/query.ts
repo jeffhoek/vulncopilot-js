@@ -19,13 +19,13 @@ export const queryTool = createTool({
   // ("structuredContent: expected record, received string"). Omitting it returns
   // the string as MCP text content — matching the reference FastMCP `-> str`
   // tools (mcp_server/server.py), which declared no structured output schema.
-  execute: async ({ context }) => {
-    const error = validateSql(context.sql);
+  execute: async (inputData) => {
+    const error = validateSql(inputData.sql);
     if (error) {
       return error;
     }
 
-    const sql = applyRowLimit(context.sql);
+    const sql = applyRowLimit(inputData.sql);
     // Phase 1 has no tool-step UI yet (Phase 2). Log to dev-server stdout so the
     // DoD's "agent queries BOTH kev and nvd" is observable now.
     console.log("[tool:query]", sql);
