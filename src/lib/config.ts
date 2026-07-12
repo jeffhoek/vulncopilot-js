@@ -162,6 +162,37 @@ const ConfigSchema = z.object({
   // if unset, the route logs a warning and serves UNAUTHENTICATED — mirroring
   // reference `mcp_server/server.py` (mcp_api_key: str | None). Blank → unset.
   MCP_API_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+
+  // ── Observability — Langfuse (Mastra AI tracing) ────────────────────────
+  // Wired via the native @mastra/langfuse exporter in src/mastra/index.ts. All
+  // optional: tracing is enabled ONLY when both keys are present (blank → unset),
+  // so local dev, tests, and CI stay trace-free with no code changes. See
+  // docs/observability-langfuse.md.
+  LANGFUSE_PUBLIC_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  LANGFUSE_SECRET_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  // Langfuse ingestion host. MUST match the region your keys were issued in.
+  // Langfuse Cloud is region-scoped: US = https://us.cloud.langfuse.com, EU =
+  // https://eu.cloud.langfuse.com. The legacy unified host https://cloud.langfuse.com
+  // now returns 401 for region-scoped accounts, so it is NOT the default. Defaults
+  // to US; set the EU or a self-hosted URL as needed. A key/host region mismatch
+  // surfaces as "401 Unauthorized ... confirm the correct host".
+  LANGFUSE_BASE_URL: z
+    .preprocess(EMPTY_TO_UNDEFINED, z.string().optional())
+    .transform((v) => v ?? "https://us.cloud.langfuse.com"),
+  // Flush each span immediately instead of batching. Defaults TRUE because this
+  // app targets Cloud Run with scale-to-zero: after a response returns the
+  // instance's CPU is throttled and it may be frozen/killed before a batched
+  // flush runs, silently dropping traces. Set to false only when running with
+  // CPU always-allocated (or a persistent server) to favor throughput.
+  LANGFUSE_REALTIME: z.preprocess(
+    (v) => (v === undefined ? "true" : v),
+    BOOL,
+  ),
+  // Raise the Langfuse exporter's log level from 'warn' to 'debug'. Use to
+  // diagnose "no errors but traces stop appearing": at 'debug' it logs each trace
+  // creation, and at any level it logs trace-map misses. Off by default (noisy).
+  // See docs/observability-langfuse.md.
+  LANGFUSE_DEBUG: BOOL,
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

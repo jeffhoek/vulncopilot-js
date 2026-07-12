@@ -1,5 +1,6 @@
+import { after } from "next/server";
 import { convertToModelMessages, type UIMessage } from "ai";
-import { mastra } from "@/src/mastra";
+import { mastra, flushTracing } from "@/src/mastra";
 import { auth } from "@/auth";
 import { config } from "@/src/lib/config";
 import { pool } from "@/src/lib/db";
@@ -119,10 +120,18 @@ export async function POST(req: Request): Promise<Response> {
     // emits the SSE UI-message protocol useChat expects (text deltas + tool steps).
     const stream = await agent.stream(convertToModelMessages(messages), {
       format: "aisdk",
+      // Attach the authenticated GitHub identity to the Langfuse trace so runs are
+      // filterable per user (no-op when tracing is disabled — see src/mastra).
+      tracingOptions: { metadata: { userId } },
       // aisdk onFinish arg omits `steps` typing; shape verified against @mastra/core stream types.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onFinish: onFinish as any,
     });
+    // Mastra exports spans fire-and-forget; without this the actual Langfuse HTTP
+    // send is a floating promise the runtime may defer for minutes (dev) or drop
+    // (Cloud Run scale-to-zero). after() keeps the invocation alive until the
+    // flush completes, so traces land promptly. No-op when tracing is disabled.
+    after(flushTracing);
     return stream.toUIMessageStreamResponse();
   } catch (err) {
     console.error("Chat route error", err);
