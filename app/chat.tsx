@@ -32,8 +32,10 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
     transport: new DefaultChatTransport({
       api: "/api/chat",
       // Client-held history, trimmed to the last N messages sent per request.
-      prepareSendMessagesRequest: ({ messages }) => ({
-        body: { messages: messages.slice(-maxHistoryMessages) },
+      // `id` is useChat's stable per-mount chat id; the route forwards it to
+      // Langfuse as session.id, so one page visit = one traced session.
+      prepareSendMessagesRequest: ({ id, messages }) => ({
+        body: { messages: messages.slice(-maxHistoryMessages), chatId: id },
       }),
     }),
   });

@@ -54,9 +54,16 @@ export async function POST(req: Request): Promise<Response> {
   const limit = limitFor(userId, RATE_LIMIT_CONFIG);
 
   let messages: UIMessage[];
+  let chatId: string | undefined;
   try {
-    const body = (await req.json()) as { messages?: UIMessage[] };
+    const body = (await req.json()) as { messages?: UIMessage[]; chatId?: string };
     messages = body.messages ?? [];
+    // Client-generated conversation id (see app/chat.tsx), forwarded to
+    // Langfuse as session.id. Client-controlled, so validate and cap it.
+    chatId =
+      typeof body.chatId === "string" && body.chatId.length > 0 && body.chatId.length <= 64
+        ? body.chatId
+        : undefined;
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -93,6 +100,15 @@ export async function POST(req: Request): Promise<Response> {
     // like this is fine on a persistent Node server (see `runtime = "nodejs"`);
     // a serverless deploy would need waitUntil to guarantee it completes.
     const stream = await agent.stream(convertToModelMessages(messages), {
+      // Trace attribution (inert unless Langfuse is configured — see
+      // src/mastra/observability.ts). The Langfuse exporter maps
+      // metadata.userId → user.id and metadata.sessionId → session.id.
+      tracingOptions: {
+        metadata: {
+          userId,
+          ...(chatId ? { sessionId: chatId } : {}),
+        },
+      },
       onFinish: async (event) => {
         try {
           const inputTokens = event.totalUsage.inputTokens ?? 0;

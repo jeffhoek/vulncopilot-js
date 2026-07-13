@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Mastra + pg are server-only; keep them out of the client bundle and
   // don't let Next try to bundle native/optional deps.
-  serverExternalPackages: ["@mastra/core", "pg"],
+  serverExternalPackages: ["@mastra/core", "@mastra/observability", "@mastra/langfuse", "pg"],
 };
 
 export default nextConfig;
