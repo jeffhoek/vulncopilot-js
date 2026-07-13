@@ -138,5 +138,5 @@ Dockerfile      Multi-stage build → standalone, non-root runtime image
 ## Related
 
 - Migration plan and reference-implementation map: [`PORTING.md`](./PORTING.md)
-- Reference implementation (Python): the sibling `chainlit-pydanticai-postgres` repo, which
+- Reference implementation (Python): the sibling `vulncopilot` repo, which
   also owns the ETL pipeline that populates the database.
