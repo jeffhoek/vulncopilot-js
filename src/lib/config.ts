@@ -162,6 +162,17 @@ const ConfigSchema = z.object({
   // if unset, the route logs a warning and serves UNAUTHENTICATED — mirroring
   // reference `mcp_server/server.py` (mcp_api_key: str | None). Blank → unset.
   MCP_API_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+
+  // ── Observability — Langfuse (optional) ─────────────────────────────────
+  // Tracing is enabled only when BOTH keys are set (blank → unset, same
+  // pattern as MCP_API_KEY). If only one is set, boot proceeds with tracing
+  // disabled and a warning — see src/mastra/observability.ts.
+  LANGFUSE_PUBLIC_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  LANGFUSE_SECRET_KEY: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  LANGFUSE_BASE_URL: z.preprocess(
+    EMPTY_TO_UNDEFINED,
+    z.string().url().default("https://cloud.langfuse.com"),
+  ),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
