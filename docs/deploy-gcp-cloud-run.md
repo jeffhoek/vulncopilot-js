@@ -22,8 +22,9 @@ Names used throughout (change once, use consistently):
 | `YOUR_PROJECT_ID` | GCP project id |
 | `vulncopilot` | Cloud Run service name |
 | `vulncopilot-runner` | Runtime service account |
-| `us-central1` | Region |
+| `us-central1` | GCP region (Cloud Run) |
 | `<project-ref>` | Supabase project reference (from the Supabase dashboard URL) |
+| `<supabase-region>` | Supabase project's region, e.g. `us-east-1` — **not** the GCP region |
 
 ## Prerequisites
 
@@ -73,8 +74,14 @@ carry the project ref suffix (`app_readonly.<project-ref>`) or you get
 `Tenant or user not found`:
 
 ```
-postgresql://app_readonly.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require
+postgresql://app_readonly.<project-ref>:<password>@aws-0-<supabase-region>.pooler.supabase.com:6543/postgres?sslmode=require
 ```
+
+`<supabase-region>` is your Supabase project's AWS region (e.g. `us-east-1`),
+not the GCP region. Rather than hand-assembling the host, copy the exact pooler
+host from the Supabase dashboard (Project Settings → Database → Connection
+string → **Transaction pooler**) — newer projects use `aws-1-…` and other
+prefixes, so the literal value from the dashboard is the safe choice.
 
 node-postgres (`pg`) does not use named prepared statements by default, so the
 transaction pooler is safe for this app.
@@ -98,13 +105,18 @@ If anything is missing, follow the reference repo's
 
 ## 4. Production GitHub OAuth app
 
-The Cloud Run service URL is deterministic, so you can register the OAuth app
-**before** the first deploy:
+With Cloud Run's newer URL format the service URL is deterministic
+(`https://<service>-<PROJECT_NUMBER>.<region>.run.app`), so you can register the
+OAuth app **before** the first deploy:
 
 ```bash
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)")
 echo "https://vulncopilot-${PROJECT_NUMBER}.us-central1.run.app"
 ```
+
+> **If your project is on the legacy URL format** (`https://<service>-<hash>-uc.a.run.app`),
+> the hash is not knowable ahead of time. Deploy once (step 8), read the real
+> URL from step 9, then register the OAuth app and set `AUTH_URL` to that value.
 
 Create a **new** OAuth app at <https://github.com/settings/developers>
 (keep the localhost one for dev):
@@ -149,6 +161,14 @@ Update a value later (then see [Redeploying](#8-redeploying)):
 ```bash
 echo -n "new-value" | gcloud secrets versions add SECRET_NAME --data-file=-
 ```
+
+**Optional — Langfuse tracing.** To export agent/LLM/tool traces, add
+`LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` as two more secrets (same
+create + IAM-binding loop above, and add them to `--set-secrets` in step 8).
+Tracing stays off unless **both** are set; setting only one boots with tracing
+disabled and a warning. `LANGFUSE_BASE_URL` is non-secret (defaults to Langfuse
+US cloud) — put it in `.env.yaml` only if you use the EU region or a self-hosted
+instance.
 
 ## 6. Non-secret environment variables
 
@@ -298,15 +318,21 @@ Walk the full surface:
    `app_readonly` write path works.
 5. **Admin** — `/admin` loads for `ADMIN_USER_IDENTIFIERS` accounts and is
    denied for others.
-6. **MCP** — the endpoint rejects requests without the key and accepts with it:
+6. **MCP** — confirm the `x-api-key` gate. Without a key the endpoint returns
+   401; with a valid key it does **not** (the transport takes over):
 
    ```bash
    URL=$(gcloud run services describe vulncopilot --region us-central1 --format="value(status.url)")
    curl -s -o /dev/null -w "%{http_code}\n" -X POST "$URL/api/mcp"        # expect 401
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST "$URL/api/mcp" \
-     -H "x-api-key: $MCP_API_KEY" -H "content-type: application/json" \
-     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'                  # expect 200
    ```
+
+   `/api/mcp` speaks MCP **streamable-HTTP**, not plain JSON-RPC: a `tools/list`
+   call must send `Accept: application/json, text/event-stream` and follow an
+   `initialize` handshake (the server issues an `Mcp-Session-Id` that later
+   requests echo back), so a bare one-liner won't return a clean 200. Drive it
+   with a real MCP client (e.g. `npx @modelcontextprotocol/inspector`) pointed
+   at `$URL/api/mcp` with the `x-api-key` header, and confirm `query` +
+   `retrieve` are listed. The key check above is the deploy-time smoke test.
 
 ## 10. Redeploying
 
