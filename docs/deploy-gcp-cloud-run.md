@@ -5,7 +5,7 @@ Supabase instance** that the reference Python app already populates (the Python
 ETL keeps writing to it; this app only reads it, plus `user_usage` writes).
 
 Adapted from the reference repo's
-`../chainlit-pydanticai-postgres/docs/deploy-gcp-cloud-run.md`. Differences that
+`../vulncopilot/docs/deploy-gcp-cloud-run.md`. Differences that
 matter here:
 
 - **Port 3000** (this Dockerfile), not 8080.
