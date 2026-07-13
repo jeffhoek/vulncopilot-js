@@ -10,20 +10,20 @@ design and database schema are already proven — reuse them; don't redesign.
 ## Reference implementation (read-only)
 
 The original Python app is checked out as a **sibling directory**:
-`../chainlit-pydanticai-postgres/`. **Read it, never modify it.** When building a piece,
+`../vulncopilot/`. **Read it, never modify it.** When building a piece,
 read its counterpart first:
 
 | Building… | Read |
 |---|---|
-| Agent + tools | `../chainlit-pydanticai-postgres/rag/agent.py` |
-| SQL validation / row-limit guards | `../chainlit-pydanticai-postgres/rag/sql_utils.py` |
-| Vector search (cross-table UNION) | `../chainlit-pydanticai-postgres/rag/vector_store.py` |
-| DB schema (source of truth) | `../chainlit-pydanticai-postgres/rag/database.py` |
-| Embeddings | `../chainlit-pydanticai-postgres/rag/embeddings.py` |
-| Auth + rate-limit wiring | `../chainlit-pydanticai-postgres/app.py` |
-| Rate-limit upsert | `../chainlit-pydanticai-postgres/rag/usage.py` |
-| MCP tools | `../chainlit-pydanticai-postgres/mcp_server/server.py` |
-| Config surface + system prompt | `../chainlit-pydanticai-postgres/config.py` |
+| Agent + tools | `../vulncopilot/rag/agent.py` |
+| SQL validation / row-limit guards | `../vulncopilot/rag/sql_utils.py` |
+| Vector search (cross-table UNION) | `../vulncopilot/rag/vector_store.py` |
+| DB schema (source of truth) | `../vulncopilot/rag/database.py` |
+| Embeddings | `../vulncopilot/rag/embeddings.py` |
+| Auth + rate-limit wiring | `../vulncopilot/app.py` |
+| Rate-limit upsert | `../vulncopilot/rag/usage.py` |
+| MCP tools | `../vulncopilot/mcp_server/server.py` |
+| Config surface + system prompt | `../vulncopilot/config.py` |
 
 Full migration plan: `PORTING.md` in this repo.
 

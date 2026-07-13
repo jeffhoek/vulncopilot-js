@@ -3,7 +3,7 @@
 Phased port of the Python (Pydantic AI + Chainlit) RAG chatbot to Mastra + Next.js.
 Each phase is independently shippable and ends with a commit. See `PORTING.md` for the
 component map and `CLAUDE.md` for constraints; the reference implementation lives at
-`../chainlit-pydanticai-postgres/` (read-only).
+`../vulncopilot/` (read-only).
 
 **Decisions locked in:**
 
