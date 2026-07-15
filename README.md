@@ -8,6 +8,16 @@ with [Mastra](https://mastra.ai) and Next.js; answers questions via semantic sea
 Ask things like *"tell me about Log4Shell"*, *"list KEV entries with known ransomware use"*,
 or *"top 10 AI-related CVEs in 2026 by CVSS score"*.
 
+> [!IMPORTANT]
+> **This app requires the [`vulncopilot`](https://github.com/jeffhoek/vulncopilot) repo.**
+> It is the frontend/agent only — it does **not** create the database schema or load any
+> data. A separate Python ETL pipeline in
+> [`jeffhoek/vulncopilot`](https://github.com/jeffhoek/vulncopilot) owns the schema and
+> ingests the KEV/NVD/CWE data and vectors that this app reads. **Set that up first** —
+> see its [data-loading guide](https://github.com/jeffhoek/vulncopilot/blob/main/docs/data-loading.md)
+> ([overview](https://github.com/jeffhoek/vulncopilot#loading-data)) — then point this app
+> at the populated database.
+
 > This is a TypeScript port of a Python (Pydantic AI + Chainlit) implementation. See
 > [`PORTING.md`](./PORTING.md) for the migration plan and the design it inherits.
 
@@ -39,20 +49,26 @@ Model routing uses the Vercel AI SDK (Anthropic Claude for generation, OpenAI
 ## The database is shared and externally populated
 
 This app is **read-mostly**. It does **not** create or load the schema — a separate
-**Python ETL pipeline** (the reference repo) ingests KEV/NVD/CWE data and writes the
-vectors. This app connects to that same database and reads it.
+**Python ETL pipeline** in the [`vulncopilot`](https://github.com/jeffhoek/vulncopilot)
+repo ingests KEV/NVD/CWE data and writes the vectors. This app connects to that same
+database and reads it.
 
 - **Embeddings are pinned** to `text-embedding-3-small` (1536-d). Changing the embedding
   model without re-embedding the corpus silently breaks search.
 - The only table this app writes is `user_usage` (rate limiting).
-- Schema source of truth lives on the ETL side (`rag/database.py` in the reference repo).
+- Schema source of truth lives on the ETL side (`rag/database.py` in
+  [`vulncopilot`](https://github.com/jeffhoek/vulncopilot)).
 
-You need a populated database before this app is useful. Point `PG_DATABASE_URL` at the
-database the ETL pipeline maintains.
+You need a populated database before this app is useful. Set up the ETL pipeline first —
+see the [`vulncopilot` data-loading guide](https://github.com/jeffhoek/vulncopilot/blob/main/docs/data-loading.md)
+([overview](https://github.com/jeffhoek/vulncopilot#loading-data)) — then point
+`PG_DATABASE_URL` at the database it maintains.
 
 ## Getting started
 
-Prerequisites: **Node 20+**, **pnpm**, and access to a populated Postgres+pgvector database.
+Prerequisites: **Node 20+**, **pnpm**, and access to a Postgres+pgvector database
+**already populated by the [`vulncopilot`](https://github.com/jeffhoek/vulncopilot) ETL
+pipeline** (see its [data-loading guide](https://github.com/jeffhoek/vulncopilot/blob/main/docs/data-loading.md)).
 
 ```bash
 pnpm install
@@ -138,5 +154,7 @@ Dockerfile      Multi-stage build → standalone, non-root runtime image
 ## Related
 
 - Migration plan and reference-implementation map: [`PORTING.md`](./PORTING.md)
-- Reference implementation (Python): the sibling `vulncopilot` repo, which
-  also owns the ETL pipeline that populates the database.
+- **Backend / ETL pipeline (required):** [`jeffhoek/vulncopilot`](https://github.com/jeffhoek/vulncopilot)
+  — the original Python implementation, which owns the database schema and the ETL that
+  populates it. Start with its
+  [data-loading guide](https://github.com/jeffhoek/vulncopilot/blob/main/docs/data-loading.md).
