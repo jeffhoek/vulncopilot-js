@@ -1,4 +1,6 @@
-# KEV/NVD RAG Chatbot (Mastra)
+# vulncopilot-js — KEV/NVD RAG Chatbot (Mastra)
+
+> The TypeScript/Next.js companion to [`jeffhoek/vulncopilot`](https://github.com/jeffhoek/vulncopilot).
 
 A retrieval-augmented chatbot for natural-language queries over the **CISA Known Exploited
 Vulnerabilities (KEV)** catalog and the **NIST National Vulnerability Database (NVD)**. Built
