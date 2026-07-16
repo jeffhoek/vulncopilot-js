@@ -389,7 +389,7 @@ Non-secret config changes: edit `.env.yaml` and rerun the deploy command (or
 | `password authentication failed` for `app_readonly` despite correct password | Supavisor didn't sync the credential. Run `ALTER ROLE app_readonly PASSWORD '<same-password>';` in the SQL Editor. |
 | Revision fails: `exec format error` | arm64 image (Apple Silicon default). Rebuild with `--platform linux/amd64` (Option B) or use Cloud Build (Option A). |
 | Boot fails: `Invalid environment configuration` | zod fail-fast — the log lists each bad var. Most common: list vars (`ALLOWED_*`, `ADMIN_USER_IDENTIFIERS`, `ACTION_BUTTONS`) not valid JSON arrays. |
-| Cloud Build fails on `--mount=type=cache` | Builder without BuildKit. The two cache mounts in the Dockerfile are an optimization only — remove them and rebuild. |
+| Cloud Build fails on `--mount=type=cache` | Builder without BuildKit. The cache mount in the Dockerfile is an optimization only — remove it and rebuild. |
 | Chat answers but `permission denied for table user_usage` in logs | Missing `INSERT`/`UPDATE` grant (or sequence grant) for `app_readonly` — step 3 verify query, then reference `docs/supabase-readonly-role.md` step 6.5. |
 
 ## Cleanup
