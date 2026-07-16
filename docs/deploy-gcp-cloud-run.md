@@ -15,11 +15,13 @@ matter here:
   and a production GitHub OAuth app.
 - **Node-specific Supabase SSL gotcha** — see [Troubleshooting](#troubleshooting).
 
-Names used throughout (change once, use consistently):
+Names used throughout (change once, use consistently). `YOUR_PROJECT_ID` is
+referenced as the shell variable `$YOUR_PROJECT_ID` in the commands below —
+`export` it once (step 1) and the rest of the runbook is copy/paste:
 
 | Placeholder | Meaning |
 |---|---|
-| `YOUR_PROJECT_ID` | GCP project id |
+| `$YOUR_PROJECT_ID` | GCP project id (a string you choose — see step 1) |
 | `vulncopilot` | Cloud Run service name |
 | `vulncopilot-runner` | Runtime service account |
 | `us-central1` | GCP region (Cloud Run) |
@@ -30,16 +32,42 @@ Names used throughout (change once, use consistently):
 
 - [Google Cloud CLI (`gcloud`)](https://cloud.google.com/sdk/docs/install)
   installed and authenticated (`gcloud auth login`)
-- A GCP project with billing enabled
+- A billing account you can link to a project (`gcloud billing accounts list`) —
+  the project itself is created in step 1
 - The existing Supabase project (populated by the Python ETL, with the
   `app_readonly` role from the reference repo's `docs/supabase-readonly-role.md`)
 - Podman (optional — only for the local smoke test and build Option B)
 
 ## 1. GCP project setup
 
+Pick a project id and export it once — every command below references
+`$YOUR_PROJECT_ID`, so this is the only place you type the literal value:
+
 ```bash
-gcloud config set project YOUR_PROJECT_ID
+export YOUR_PROJECT_ID="vulncopilot"   # your chosen id (see rules below)
 ```
+
+The project **id** is a string you choose: lowercase letters/digits/hyphens,
+6–30 chars, **globally unique** across all of GCP, and **immutable** once set.
+It is not a UUID and not the numeric project *number* (that's auto-assigned).
+If `vulncopilot` is already taken, add a qualifier to the id (e.g.
+`vulncopilot-jh`) and keep `--name` clean.
+
+Create the project and link billing (skip the create if you made it in the
+Cloud Console — but still `export` the id above and set it as the active config):
+
+```bash
+gcloud projects create "$YOUR_PROJECT_ID" --name="vulncopilot"
+
+gcloud billing accounts list                       # copy your billing account id
+gcloud billing projects link "$YOUR_PROJECT_ID" \
+  --billing-account=XXXXXX-XXXXXX-XXXXXX
+
+gcloud config set project "$YOUR_PROJECT_ID"
+```
+
+Billing must be linked before the next step — Cloud Run, Cloud Build, and
+Artifact Registry all refuse to enable on an unbilled project.
 
 ```bash
 gcloud services enable \
@@ -110,7 +138,7 @@ With Cloud Run's newer URL format the service URL is deterministic
 OAuth app **before** the first deploy:
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)")
+PROJECT_NUMBER=$(gcloud projects describe $YOUR_PROJECT_ID --format="value(projectNumber)")
 echo "https://vulncopilot-${PROJECT_NUMBER}.us-central1.run.app"
 ```
 
@@ -151,7 +179,7 @@ for s in PG_DATABASE_URL ANTHROPIC_API_KEY OPENAI_API_KEY \
   printf "Enter value for %s: " "$s"; IFS= read -rs v; echo
   printf '%s' "$v" | gcloud secrets create "$s" --data-file=-
   gcloud secrets add-iam-policy-binding "$s" \
-    --member="serviceAccount:vulncopilot-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:vulncopilot-runner@$YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 done
 ```
@@ -237,7 +265,7 @@ Cloud Build uses the repo's Dockerfile. `gcloud` derives `.gcloudignore` from
 `.gitignore`, so `.env*` files are never uploaded.
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)")
+PROJECT_NUMBER=$(gcloud projects describe $YOUR_PROJECT_ID --format="value(projectNumber)")
 
 gcloud run deploy vulncopilot \
   --source . \
@@ -249,9 +277,9 @@ gcloud run deploy vulncopilot \
   --min-instances 0 \
   --max-instances 3 \
   --env-vars-file .env.yaml \
-  --build-service-account "projects/YOUR_PROJECT_ID/serviceAccounts/${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --build-service-account "projects/$YOUR_PROJECT_ID/serviceAccounts/${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --set-secrets="PG_DATABASE_URL=PG_DATABASE_URL:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest,AUTH_GITHUB_ID=AUTH_GITHUB_ID:latest,AUTH_GITHUB_SECRET=AUTH_GITHUB_SECRET:latest,MCP_API_KEY=MCP_API_KEY:latest" \
-  --service-account vulncopilot-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com
+  --service-account vulncopilot-runner@$YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Key flags:
@@ -279,11 +307,11 @@ podman login -u oauth2accesstoken -p "$(gcloud auth print-access-token)" \
 # Build for amd64 — REQUIRED on Apple Silicon (default arm64 images fail on
 # Cloud Run with "exec format error")
 podman build --platform linux/amd64 \
-  -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest .
-podman push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest
+  -t us-central1-docker.pkg.dev/$YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest .
+podman push us-central1-docker.pkg.dev/$YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest
 ```
 
-Then deploy with `--image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest`
+Then deploy with `--image us-central1-docker.pkg.dev/$YOUR_PROJECT_ID/vulncopilot/vulncopilot:latest`
 in place of `--source .` (and drop `--build-service-account`) in the Option A
 command.
 
@@ -375,7 +403,7 @@ Option B in the `vulncopilot` repo):
 
 ```bash
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/YOUR_PROJECT_ID/cloud-run-source-deploy \
+  us-central1-docker.pkg.dev/$YOUR_PROJECT_ID/cloud-run-source-deploy \
   --format="value(IMAGE)" | while read -r image; do
   gcloud artifacts docker images delete "$image" --quiet
 done
