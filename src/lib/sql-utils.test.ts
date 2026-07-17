@@ -41,6 +41,36 @@ describe("validateSql", () => {
   it("rejects a stacked statement with a trailing semicolon", () => {
     expect(validateSql("SELECT 1; DROP TABLE t;")).not.toBeNull();
   });
+  // Added defense-in-depth denylist of file/large-object/network functions.
+  it("rejects pg_read_file()", () => {
+    expect(validateSql("SELECT pg_read_file('/etc/passwd')")).not.toBeNull();
+  });
+  it("rejects a schema-qualified pg_read_file() with whitespace before the paren", () => {
+    expect(validateSql("SELECT pg_catalog.pg_read_file ('/etc/passwd')")).not.toBeNull();
+  });
+  it("rejects lo_import()", () => {
+    expect(validateSql("SELECT lo_import('/etc/passwd')")).not.toBeNull();
+  });
+  it("rejects dblink() SSRF", () => {
+    expect(
+      validateSql("SELECT * FROM dblink('host=169.254.169.254', 'SELECT 1') AS t(x text)"),
+    ).not.toBeNull();
+  });
+  it("rejects pg_ls_dir()", () => {
+    expect(validateSql("SELECT pg_ls_dir('.')")).not.toBeNull();
+  });
+  // False-positive guard: the blocked names as TEXT (not a call) must still work,
+  // since this is a vulnerability database whose descriptions mention them.
+  it("allows a text search that mentions a blocked function name as a literal", () => {
+    expect(
+      validateSql("SELECT cve_id FROM nvd_vulnerabilities WHERE description ILIKE '%pg_read_file%'"),
+    ).toBeNull();
+  });
+  it("allows a text search mentioning dblink as a literal", () => {
+    expect(
+      validateSql("SELECT cve_id FROM nvd_vulnerabilities WHERE description ILIKE '%dblink%'"),
+    ).toBeNull();
+  });
 });
 
 describe("applyRowLimit", () => {

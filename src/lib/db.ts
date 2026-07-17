@@ -24,8 +24,35 @@ export const pool: Pool =
     connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
   });
 
+/**
+ * Startup guard for the F2 risk: the `query` tool runs LLM-generated SELECTs, and
+ * the real containment is the privilege of the role in PG_DATABASE_URL. A
+ * superuser (or a role in `pg_read_server_files`) can turn a SELECT into a
+ * host-file read or SSRF primitive despite the READ ONLY transaction. Warn loudly
+ * at boot if we connected as a superuser so a misconfigured deploy is obvious.
+ * Best-effort and non-fatal — a transient DB hiccup must not block startup.
+ */
+async function assertLeastPrivilegeRole(p: Pool): Promise<void> {
+  try {
+    const res = await p.query<{ is_superuser: string }>(
+      "SELECT current_setting('is_superuser') AS is_superuser",
+    );
+    if (res.rows[0]?.is_superuser === "on") {
+      console.error(
+        "SECURITY: connected to Postgres as a SUPERUSER. The `query` tool runs " +
+          "LLM-generated SQL; a superuser role makes SELECT a host-file-read / SSRF " +
+          "primitive. Use a least-privileged read-only role — see db/least-privilege-role.sql.",
+      );
+    }
+  } catch {
+    // DB unreachable at boot; skip the check (non-fatal).
+  }
+}
+
 if (!globalForPg.__pgPool) {
   globalForPg.__pgPool = pool;
+  // Fire-and-forget; runs once per fresh pool (not on every hot-reload).
+  void assertLeastPrivilegeRole(pool);
 }
 
 /**
