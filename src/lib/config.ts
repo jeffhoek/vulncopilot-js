@@ -92,6 +92,16 @@ const BOOL = z.preprocess((v) => {
 const ConfigSchema = z.object({
   // Required.
   PG_DATABASE_URL: z.string().min(1, "PG_DATABASE_URL is required"),
+
+  // ── Database timeouts (runtime-tunable via env, no rebuild) ──────────────
+  // Per-statement wall-clock cap applied (via SET LOCAL) to the LLM-driven
+  // `query` tool's read-only transaction. Bounds a slow read — SET TRANSACTION
+  // READ ONLY blocks writes but not `SELECT pg_sleep(...)` or a runaway join,
+  // which would otherwise hang a pooled connection and exhaust the pool.
+  PG_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // How long to wait for a free pooled connection before failing fast, rather
+  // than piling awaiters up behind an exhausted pool.
+  PG_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
 

@@ -5,10 +5,23 @@ import { config } from "./config";
 // not leak a new pool on every module reload.
 const globalForPg = globalThis as unknown as { __pgPool?: Pool };
 
+// Per-statement wall-clock cap for the LLM-driven `query` tool. `SET TRANSACTION
+// READ ONLY` blocks writes but NOT a slow read: `SELECT pg_sleep(...)` or an
+// expensive join would otherwise hang a pooled connection indefinitely, and a
+// few concurrent ones exhaust the pool and take the whole app offline (the
+// authoritative rate-limit count runs in the chat route's onFinish, which never
+// fires for a query that never finishes). Applied per-transaction via SET LOCAL
+// in runReadOnlyQuery so it scopes to tool SQL only. Env-tunable so it can be
+// adjusted without a rebuild — see PG_STATEMENT_TIMEOUT_MS in config.ts.
+const QUERY_STATEMENT_TIMEOUT_MS = config.PG_STATEMENT_TIMEOUT_MS;
+
 export const pool: Pool =
   globalForPg.__pgPool ??
   new Pool({
     connectionString: config.PG_DATABASE_URL,
+    // Fail fast instead of hanging when every connection is busy or the DB is
+    // unreachable, rather than piling up awaiters behind an exhausted pool.
+    connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
   });
 
 if (!globalForPg.__pgPool) {
@@ -27,6 +40,11 @@ export async function runReadOnlyQuery(sql: string): Promise<QueryResult> {
   try {
     await client.query("BEGIN");
     await client.query("SET TRANSACTION READ ONLY");
+    // Bound this statement's runtime (see QUERY_STATEMENT_TIMEOUT_MS). SET LOCAL
+    // scopes it to this transaction, so it reverts when the connection returns to
+    // the pool. A timeout raises a Postgres error (SQLSTATE 57014), which the
+    // query tool surfaces as a "Query error: …" string rather than throwing.
+    await client.query(`SET LOCAL statement_timeout = ${QUERY_STATEMENT_TIMEOUT_MS}`);
     const result = await client.query(sql);
     await client.query("COMMIT");
     return result;
