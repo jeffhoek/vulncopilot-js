@@ -8,7 +8,43 @@ export const MAX_QUERY_ROWS = 100;
 export const MAX_CELL_CHARS = 200;
 export const MAX_OUTPUT_CHARS = 20_000;
 
-/** Return an error string if sql is not a single SELECT statement, else null. */
+// Defense-in-depth denylist (added guard, beyond the reference). `SET TRANSACTION
+// READ ONLY` blocks writes but not reads, so a valid SELECT can still invoke
+// server-side functions that touch the host filesystem, large objects, or the
+// network (SSRF). The AUTHORITATIVE control is the least-privileged Postgres role
+// the app connects as (the `app_readonly` role — see the reference repo's
+// docs/supabase-readonly-role.md), which lacks the privileges these functions
+// need. This list is a second layer that fails such a query with a clear message
+// before it ever reaches the DB.
+//
+// Scoped to FUNCTION-CALL syntax (`name(`) on purpose: this is a vulnerability
+// database, so legitimate text searches like `WHERE description ILIKE
+// '%pg_read_file%'` must still work — those are string literals, not calls, so
+// they don't match. Credential catalogs (pg_authid/pg_shadow) are intentionally
+// NOT listed here: a non-superuser role cannot read them, and listing them would
+// break legitimate text searches; the role is the control for those.
+const BLOCKED_FUNCTIONS = [
+  "pg_read_file",
+  "pg_read_binary_file",
+  "pg_stat_file",
+  "pg_ls_dir",
+  "pg_ls_logdir",
+  "pg_ls_waldir",
+  "pg_ls_tmpdir",
+  "lo_import",
+  "lo_export",
+  "dblink",
+  "dblink_exec",
+  "dblink_connect",
+];
+// Matches an optionally schema-qualified call to any blocked function, e.g.
+// `pg_read_file(`, `pg_catalog.pg_read_file (`. Case-insensitive.
+const BLOCKED_FUNCTION_RE = new RegExp(
+  `\\b(?:${BLOCKED_FUNCTIONS.join("|")})\\s*\\(`,
+  "i",
+);
+
+/** Return an error string if sql is not a single safe SELECT statement, else null. */
 export function validateSql(sql: string): string | null {
   const trimmed = sql.trim();
   if (!trimmed.toUpperCase().startsWith("SELECT")) {
@@ -20,6 +56,10 @@ export function validateSql(sql: string): string | null {
   const withoutTrailing = trimmed.replace(/;\s*$/, "");
   if (withoutTrailing.includes(";")) {
     return "Error: Only a single SQL statement is permitted.";
+  }
+  // Block file/large-object/network function calls (see BLOCKED_FUNCTIONS).
+  if (BLOCKED_FUNCTION_RE.test(trimmed)) {
+    return "Error: This query uses a disallowed function.";
   }
   return null;
 }
