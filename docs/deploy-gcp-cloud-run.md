@@ -114,6 +114,18 @@ prefixes, so the literal value from the dashboard is the safe choice.
 node-postgres (`pg`) does not use named prepared statements by default, so the
 transaction pooler is safe for this app.
 
+> **SSL mode — `no-verify` now, harden later.** Unlike the Python app's asyncpg,
+> node-postgres *verifies* the server cert with `sslmode=require`, so against
+> Supabase you'll hit `self-signed certificate in certificate chain` at boot. The
+> pragmatic launch value is **`?sslmode=no-verify`** (traffic stays encrypted, cert
+> unverified — matching what the Python app effectively did). This is a deliberate,
+> deferrable trade-off, **not** a permanent setting: to harden, download the
+> Supabase CA cert (Project Settings → Database → SSL), ship it via
+> `NODE_EXTRA_CA_CERTS`, and switch back to `?sslmode=require`. See the
+> [Troubleshooting](#troubleshooting) row for the exact steps. Whatever you pick,
+> the `PG_DATABASE_URL` **secret** (step 5) must carry the matching `sslmode`, or
+> the Cloud Run boot fails the same way.
+
 ### Verify grants
 
 In the Supabase SQL Editor, confirm `app_readonly` has exactly what the app
@@ -204,7 +216,11 @@ Write `.env.yaml` by hand (already gitignored via the `.env*` pattern). List
 vars use the JSON-array convention — a bare `a,b` fails zod validation at boot.
 
 ```yaml
-# NextAuth behind Cloud Run's proxy — both REQUIRED
+# NextAuth behind Cloud Run's proxy — both REQUIRED.
+# AUTH_URL is the *.run.app URL for a bare Cloud Run deploy. Once the app is
+# behind a custom domain (see custom-domain-cloudflare.md), set AUTH_URL to that
+# domain instead (e.g. https://vulncopilot.org) and update the GitHub OAuth
+# callback to match.
 AUTH_TRUST_HOST: "true"
 AUTH_URL: "https://vulncopilot-<PROJECT_NUMBER>.us-central1.run.app"
 
