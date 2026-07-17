@@ -8,10 +8,11 @@ export interface LangfuseSettings {
   publicKey?: string;
   secretKey?: string;
   baseUrl: string;
-  // Dev flushes each event immediately (traces visible in the Langfuse UI
-  // within seconds); production uses the exporter's default batching. Batched
-  // events still in memory can be lost on shutdown — acceptable for tracing;
-  // tune flushAt/flushInterval on the exporter if that ever matters.
+  // Flush inline (realtime) in every environment. On scale-to-zero Cloud Run,
+  // CPU is throttled between requests and the instance freezes before the
+  // exporter's background batch timer fires, so batched events never ship.
+  // Inline flush trades a little per-event latency for traces that actually
+  // arrive. `dev` still distinguishes the Langfuse `environment` label below.
   dev: boolean;
 }
 
@@ -36,7 +37,7 @@ export function buildObservability(s: LangfuseSettings): Observability | undefin
             publicKey: s.publicKey,
             secretKey: s.secretKey,
             baseUrl: s.baseUrl,
-            realtime: s.dev,
+            realtime: true,
             environment: s.dev ? "development" : "production",
           }),
         ],
