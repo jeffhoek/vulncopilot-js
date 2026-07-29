@@ -44,8 +44,13 @@ Full migration plan: `PORTING.md` in this repo.
 - Embeddings: **`text-embedding-3-small`, 1536 dimensions.** Pin it. A mismatch silently
   breaks cosine search.
 - Tables: `kev_vulnerabilities`, `nvd_vulnerabilities` (each `content TEXT`,
-  `embedding vector(1536)`, HNSW `vector_cosine_ops`), `cwe_definitions`, `etl_runs`,
-  `user_usage`. DDL: reference repo `rag/database.py`.
+  `embedding vector(1536)`, HNSW `vector_cosine_ops`), `cwe_definitions`, `epss_scores`,
+  `etl_runs`, `user_usage`. DDL: reference repo `rag/database.py`.
+- `epss_scores` (FIRST.org exploitation likelihood, ~353k rows, refreshed daily) is
+  **SQL-only and deliberately excluded from embedded content** — scores change daily for
+  every CVE, so embedding them would invalidate the whole vector index every day. To show
+  EPSS on retrieval results, join it by `cve_id` *after* retrieval; never bake it into the
+  embedded text.
 - Port the **system prompt verbatim** from reference `config.py` (it describes the schema
   the SQL tool depends on, the "query BOTH KEV and NVD for a CVE" rule, and CWE joins).
 - Do **not** re-embed the corpus — vectors already exist in the DB.
