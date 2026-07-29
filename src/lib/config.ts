@@ -40,6 +40,11 @@ TABLE: nvd_vulnerabilities (
   reference_urls TEXT[],
   published DATE,
   last_modified DATE,
+  ssvc_exploitation VARCHAR(8),     -- none|poc|active (CISA SSVC decision factor)
+  ssvc_automatable VARCHAR(4),      -- yes|no
+  ssvc_technical_impact VARCHAR(8), -- partial|total
+  ssvc_decision VARCHAR(8),         -- Act|Attend|Track|Track* (usually NULL today)
+  ssvc_version VARCHAR(8),          -- SSVC schema version, e.g. '2.0.3'
   raw_json JSONB -- full NVD API response, query with -> and ->> operators
 )
 
@@ -53,6 +58,19 @@ TABLE: cwe_definitions (
 
 JOIN tables on cve_id to cross-reference KEV and NVD data.
 JOIN cwe_definitions using: cwe_id = ANY(nvd_vulnerabilities.cwes) or cwe_id = ANY(kev_vulnerabilities.cwes) to resolve CWE IDs to names.
+
+## SSVC (prioritization)
+
+SSVC is CISA's Stakeholder-Specific Vulnerability Categorization — a decision framework that complements CVSS. CVSS measures severity; SSVC measures how urgently to act. A CVE can be CVSS 10.0 with ssvc_exploitation='none' (not yet urgent) or moderate CVSS with ssvc_exploitation='active' + ssvc_automatable='yes' (patch now).
+- ssvc_exploitation: none < poc < active (active = exploited in the wild).
+- ssvc_automatable: yes|no (whether attackers can automate exploitation at scale).
+- ssvc_technical_impact: partial|total.
+- ssvc_decision (when present): Act > Attend > Track in urgency; usually NULL today because NVD ships the factors without the rolled-up outcome.
+- KEV-listed CVEs are typically ssvc_exploitation='active'.
+Top remediation priority = ssvc_exploitation='active' AND ssvc_automatable='yes' AND ssvc_technical_impact='total'.
+Example queries:
+- Count by exploitation: SELECT ssvc_exploitation, COUNT(*) FROM nvd_vulnerabilities GROUP BY ssvc_exploitation;
+- Top priority: SELECT cve_id, cvss_v31_score FROM nvd_vulnerabilities WHERE ssvc_exploitation='active' AND ssvc_automatable='yes' AND ssvc_technical_impact='total' ORDER BY cvss_v31_score DESC NULLS LAST;
 
 ## Tools
 
