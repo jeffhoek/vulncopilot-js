@@ -86,15 +86,34 @@ Minimum required env: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PG_DATABASE_URL`,
 ## Access control
 
 Sign-in is GitHub OAuth. Access is allow-listed — a user is admitted if `OPEN_REGISTRATION`
-is true, or their email / email domain / GitHub login matches the `ALLOWED_*` lists.
-Identity is keyed on the stable GitHub numeric id (`github:<id>`), not the mutable
-username or email.
+is true, or their email / email domain / GitHub login matches the `ALLOWED_*` lists
+(matched case-insensitively). Identity is keyed on the stable GitHub numeric id
+(`github:<id>`), not the mutable username or email.
+
+Sessions are stateless JWTs, so removing someone from the allow-list only takes effect
+when their token expires — `SESSION_MAX_AGE_SECONDS` (default 24h) is the revocation
+window. Before setting `ALLOWED_EMAIL_DOMAINS`, read
+[Opening access to a whole email domain](./docs/deploy-gcp-cloud-run.md#opening-access-to-a-whole-email-domain).
 
 ## Rate limiting
 
 Each user gets `DAILY_QUERY_LIMIT` queries per UTC day, tracked in `user_usage` with token
 accounting. Users listed in `ADMIN_USER_IDENTIFIERS` get `ADMIN_DAILY_QUERY_LIMIT` and can
 view the `/admin` usage dashboard.
+
+`GLOBAL_DAILY_QUERY_LIMIT` and `GLOBAL_DAILY_TOKEN_LIMIT` cap the total across *all* users
+per UTC day — the backstop on spend once more than a handful of people can sign in. Both
+default to `0` (disabled); admins are exempt. Set them before widening the allow-list.
+
+## Database roles
+
+`PG_DATABASE_URL` carries the agent's `query` tool, which runs model-authored SQL —
+`validateSql` bounds the *statement type*, not which tables it may read, so everything
+that role can read is reachable by any signed-in user. `PG_USAGE_DATABASE_URL` (optional)
+puts rate limiting and `/admin` on a separate `app_usage` role so `user_usage` can be
+revoked from the corpus role. Unset, both share one connection and `user_usage` stays
+readable through chat. Grants and rollout order: reference repo
+`docs/supabase-readonly-role.md`, Part 2.5.
 
 ## MCP server
 

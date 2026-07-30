@@ -14,6 +14,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // Redirect unauthenticated / denied users to the app root, which renders the
   // sign-in view. On a denied sign-in NextAuth appends `?error=AccessDenied`.
   pages: { signIn: "/", error: "/" },
+  // Session lifetime is the ONLY revocation lever this app has: JWT sessions
+  // carry no server-side session store (no DB adapter — see above), so removing
+  // someone from the allow-list does not sign them out. Their token stays valid
+  // until it expires. NextAuth's 30-day default is far too long for a
+  // domain-wide allow-list, where "revoke access" must actually mean something
+  // (an ex-employee keeps a verified company address on their GitHub account).
+  // Default 24h; tune with SESSION_MAX_AGE_SECONDS.
+  session: { strategy: "jwt", maxAge: config.SESSION_MAX_AGE_SECONDS },
   callbacks: {
     // The allow-list gate. Ported branching lives in decideAccess() (unit-tested).
     signIn({ profile }) {

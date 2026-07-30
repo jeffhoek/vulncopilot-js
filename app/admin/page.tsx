@@ -1,5 +1,5 @@
 import { config } from "@/src/lib/config";
-import { pool } from "@/src/lib/db";
+import { usagePool } from "@/src/lib/db";
 import { getUsageStats, type UsageStat } from "@/src/lib/usage";
 import { auth } from "@/auth";
 import { SignIn } from "../signin";
@@ -40,7 +40,7 @@ export default async function Admin() {
   let loadError = false;
   try {
     rows = await getUsageStats(
-      pool,
+      usagePool,
       config.LLM_INPUT_COST_PER_MILLION,
       config.LLM_OUTPUT_COST_PER_MILLION,
     );

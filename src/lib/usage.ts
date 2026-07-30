@@ -79,6 +79,55 @@ export function limitMessage(limit: number): string {
   return `You've reached your daily limit of ${limit} queries. Try again tomorrow.`;
 }
 
+// ── Global (service-wide) daily cap ───────────────────────────────────────
+// Not in the reference, which only ever ran with a hand-picked allow-list. The
+// per-user cap bounds one person; with ALLOWED_EMAIL_DOMAINS the number of
+// people is unbounded, so total spend needs its own ceiling.
+
+export interface GlobalUsage {
+  queries: number;
+  tokens: number;
+}
+
+export interface GlobalLimitConfig {
+  // 0 = disabled, for both.
+  globalDailyQueryLimit: number;
+  globalDailyTokenLimit: number;
+}
+
+/**
+ * Whether today's service-wide usage has reached either configured ceiling.
+ * Pure, so the boundary semantics are unit-testable without a DB. `>=` (not `>`)
+ * matches the per-user pre-check: the cap is the number of queries allowed, so
+ * once usage reaches it the next request is refused.
+ */
+export function exceedsGlobalCap(usage: GlobalUsage, cfg: GlobalLimitConfig): boolean {
+  if (cfg.globalDailyQueryLimit > 0 && usage.queries >= cfg.globalDailyQueryLimit) return true;
+  if (cfg.globalDailyTokenLimit > 0 && usage.tokens >= cfg.globalDailyTokenLimit) return true;
+  return false;
+}
+
+/**
+ * Today's totals across every user. Cheap — `user_usage` holds one row per user
+ * per day, so this scans at most headcount rows. Tokens are input + output
+ * summed, which is the closest proxy to spend that a single number can give
+ * (they are priced differently; the cap is a blast-radius backstop, not billing).
+ */
+export async function currentGlobalDailyUsage(pool: Pool): Promise<GlobalUsage> {
+  const res = await pool.query<{ queries: string; tokens: string }>(
+    `SELECT COALESCE(SUM(query_count), 0)                          AS queries,
+            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS tokens
+     FROM user_usage
+     WHERE query_date = CURRENT_DATE`,
+  );
+  return { queries: Number(res.rows[0].queries), tokens: Number(res.rows[0].tokens) };
+}
+
+/** Shown when the service-wide cap is hit — deliberately says nothing about limits. */
+export function globalLimitMessage(): string {
+  return "The service has reached its daily capacity. Please try again tomorrow.";
+}
+
 // Per-user aggregate for the /admin dashboard. Query counts are windowed
 // (today / last 7 / last 30 days, each window inclusive of today); token totals
 // are all-time so the estimated cost reflects everything the user has spent.

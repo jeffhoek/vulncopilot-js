@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { estimateCost, limitFor, limitMessage, type RateLimitConfig } from "./usage";
+import {
+  estimateCost,
+  exceedsGlobalCap,
+  limitFor,
+  limitMessage,
+  type GlobalLimitConfig,
+  type RateLimitConfig,
+} from "./usage";
 
 // Port of reference `tests/unit/test_rate_limit.py`. Covers the pure per-user
 // effective-limit boundary logic. checkAndIncrement / currentDailyCount hit the
@@ -26,6 +33,43 @@ describe("limitFor (port of app._limit_for)", () => {
   it("empty admin list means everyone gets the standard limit", () => {
     const cfg = { ...BASE, dailyQueryLimit: 5, adminUserIdentifiers: [] };
     expect(limitFor("github:111", cfg)).toBe(5);
+  });
+});
+
+// Not in the reference — the service-wide backstop added alongside
+// ALLOWED_EMAIL_DOMAINS. 0 means disabled for each ceiling independently.
+const NO_GLOBAL_CAP: GlobalLimitConfig = {
+  globalDailyQueryLimit: 0,
+  globalDailyTokenLimit: 0,
+};
+
+describe("exceedsGlobalCap", () => {
+  it("is disabled when both ceilings are 0, whatever the usage", () => {
+    expect(exceedsGlobalCap({ queries: 10_000, tokens: 9_000_000 }, NO_GLOBAL_CAP)).toBe(false);
+  });
+
+  it("blocks at the query ceiling (>=, matching the per-user pre-check)", () => {
+    const cfg = { ...NO_GLOBAL_CAP, globalDailyQueryLimit: 500 };
+    expect(exceedsGlobalCap({ queries: 499, tokens: 0 }, cfg)).toBe(false);
+    expect(exceedsGlobalCap({ queries: 500, tokens: 0 }, cfg)).toBe(true);
+  });
+
+  it("blocks at the token ceiling", () => {
+    const cfg = { ...NO_GLOBAL_CAP, globalDailyTokenLimit: 1_000_000 };
+    expect(exceedsGlobalCap({ queries: 3, tokens: 999_999 }, cfg)).toBe(false);
+    expect(exceedsGlobalCap({ queries: 3, tokens: 1_000_000 }, cfg)).toBe(true);
+  });
+
+  it("either ceiling alone is enough to block", () => {
+    const cfg = { globalDailyQueryLimit: 500, globalDailyTokenLimit: 1_000_000 };
+    expect(exceedsGlobalCap({ queries: 1, tokens: 2_000_000 }, cfg)).toBe(true);
+    expect(exceedsGlobalCap({ queries: 900, tokens: 1 }, cfg)).toBe(true);
+    expect(exceedsGlobalCap({ queries: 1, tokens: 1 }, cfg)).toBe(false);
+  });
+
+  it("a disabled ceiling does not block even at zero usage", () => {
+    const cfg = { ...NO_GLOBAL_CAP, globalDailyQueryLimit: 500 };
+    expect(exceedsGlobalCap({ queries: 0, tokens: 0 }, cfg)).toBe(false);
   });
 });
 
