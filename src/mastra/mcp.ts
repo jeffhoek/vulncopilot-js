@@ -1,11 +1,12 @@
 import { MCPServer } from "@mastra/mcp";
 import { queryTool } from "./tools/query";
 import { retrieveTool } from "./tools/retrieve";
+import { riskScoreTool } from "./tools/risk-score";
 
-// MCP server exposing the SAME query + retrieve tool implementations the RAG
-// agent uses (reuse, not duplicate — see CLAUDE.md / PORTING.md §MCP). Port of
-// reference `mcp_server/server.py`, which registered `retrieve` and `query`
-// FastMCP tools backed by the same sql_utils / vector_store code.
+// MCP server exposing the SAME query + retrieve + risk_score tool implementations
+// the RAG agent uses (reuse, not duplicate — see CLAUDE.md / PORTING.md §MCP). Port
+// of reference `mcp_server/server.py`, which registered the same three FastMCP
+// tools backed by the same sql_utils / vector_store / risk code.
 //
 // Cached on globalThis so Next dev hot-reload does not construct a new server
 // (and duplicate transports) on every module reload — same pattern as the
@@ -18,7 +19,7 @@ export const mcpServer: MCPServer =
     id: "kev-nvd-rag",
     name: "kev-nvd-rag",
     version: "1.0.0",
-    tools: { query: queryTool, retrieve: retrieveTool },
+    tools: { query: queryTool, retrieve: retrieveTool, risk_score: riskScoreTool },
   });
 
 if (!globalForMcp.__mcpServer) {
