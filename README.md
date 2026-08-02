@@ -120,8 +120,9 @@ default to `0` (disabled); admins are exempt. Set them before widening the allow
 `validateSql` bounds the *statement type*, not which tables it may read, so everything
 that role can read is reachable by any signed-in user. `PG_USAGE_DATABASE_URL` (optional)
 puts rate limiting and `/admin` on a separate `app_usage` role so `user_usage` can be
-revoked from the corpus role. Unset, both share one connection and `user_usage` stays
-readable through chat. Grants and rollout order: reference repo
+revoked from the corpus role. Unset, both share one connection, and the only thing
+keeping `user_usage` out of chat is `validateSql`'s denylist on that one table name —
+a stopgap, where the revoke is the boundary. Grants and rollout order: reference repo
 `docs/supabase-readonly-role.md`, Part 2.5.
 
 ## MCP server

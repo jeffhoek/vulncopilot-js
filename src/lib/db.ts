@@ -71,8 +71,9 @@ if (!globalForPg.__pgPool) {
 /**
  * Connection for `user_usage` reads and writes. When PG_USAGE_DATABASE_URL is
  * unset this IS `pool` — a single role does everything, which is the historical
- * behavior and leaves `user_usage` readable through the `query` tool. Point it
- * at the `app_usage` role to separate them.
+ * behavior and leaves `user_usage` within reach of the `query` tool, guarded only
+ * by validateSql's denylist on the table name. Point it at the `app_usage` role to
+ * separate them for real.
  *
  * Small `max`: this pool serves two cheap statements per chat request and the
  * admin page, so it should not hold Supavisor slots the corpus pool needs.
@@ -91,15 +92,16 @@ if (config.PG_USAGE_DATABASE_URL && !globalForPg.__pgUsagePool) {
 }
 
 // Loud on the combination that actually matters: a broad allow-list plus a
-// single role means every admitted user can read every other user's identity
-// and token totals through the query tool. Silent no-op controls are worse than
-// absent ones, so say so at boot rather than leaving it to the docs.
+// single role means every admitted user's identity and token totals sit behind
+// nothing but validateSql's table-name denylist. A stopgap holding on its own is
+// worse than an absent control, so say so at boot rather than leaving it to the docs.
 const ACCESS_IS_BROAD = config.OPEN_REGISTRATION || config.ALLOWED_EMAIL_DOMAINS.length > 0;
 if (!config.PG_USAGE_DATABASE_URL && ACCESS_IS_BROAD) {
   console.warn(
     "[db] PG_USAGE_DATABASE_URL is unset while access is open to a whole domain " +
       "(or open registration). `user_usage` — every user's github:<id> and token " +
-      "totals — is readable through the agent's `query` tool. See " +
+      "totals — is reachable by the agent's `query` tool and blocked only by " +
+      "validateSql's denylist on the table name. Complete the app_usage role split: " +
       "docs/supabase-readonly-role.md Part 2.5 in the reference repo.",
   );
 }

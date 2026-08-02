@@ -188,7 +188,8 @@ const ConfigSchema = z.object({
   // /admin). Its role must not be able to read the vulnerability tables and,
   // more importantly, the PG_DATABASE_URL role must not be able to read
   // `user_usage` — the `query` tool runs model-authored SELECTs on that
-  // connection, and validateSql restricts the statement type, not the tables.
+  // connection, and validateSql's denylist on that one table name is a stopgap
+  // standing in for a grant it cannot enforce.
   // Unset → falls back to PG_DATABASE_URL, which preserves today's single-role
   // behavior (and today's exposure). See the reference repo's
   // docs/supabase-readonly-role.md, Part 2.5 (app_usage) for the grants and the

@@ -295,12 +295,15 @@ uncommenting it:
 4. **Know your revocation window.** Removing the domain does not sign anyone out
    — stateless JWTs stay valid until `SESSION_MAX_AGE_SECONDS` elapses.
 5. **Remember every signed-in user can run arbitrary `SELECT`** through the agent's
-   `query` tool, against everything `app_readonly` can read — including
-   `user_usage` (every user's `github:<id>` and token totals) — the agent's
-   "there is no such table" answer is the system prompt talking, not a guard.
-   Set `PG_USAGE_DATABASE_URL` and complete the `app_usage` rollout (step 3) to
-   actually close this. Don't widen those grants, and assume anything readable by
-   that role is readable by every user you admit.
+   `query` tool, against everything `app_readonly` can read. `user_usage` (every
+   user's `github:<id>` and token totals) is the exception: `validateSql` refuses
+   any statement naming it. That check is a real guard, not the system prompt —
+   but it is a denylist on one table name, matched as a substring, so treat it as
+   a stopgap rather than the boundary. Setting `PG_USAGE_DATABASE_URL` and
+   completing the `app_usage` rollout (step 3) is what actually closes it, by
+   revoking the table from the role instead of asking the app to avoid it. For
+   every other table there is no such check: don't widen those grants, and assume
+   anything readable by that role is readable by every user you admit.
 6. **Check the data-flow is acceptable to them.** Chat contents go to Anthropic,
    OpenAI (embeddings), and Langfuse if tracing is on. A client's security team
    will care where their vulnerability questions land.
