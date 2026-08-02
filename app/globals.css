@@ -28,8 +28,9 @@
   --accent: #4f46e5; /* send button */
   --accent-fg: #fff;
   --danger: #b00020;
-  --danger-bg: #fdecea; /* signin-denied */
+  --danger-bg: #fdecea; /* signin-denied, fault notice */
   --warning: #8a6d00; /* rate-limit notice */
+  --warning-bg: #fdf6e3; /* advisory notice */
   --gh-btn: #24292f; /* GitHub sign-in button */
   --gh-btn-hover: #000;
   --gh-btn-fg: #fff;
@@ -65,6 +66,7 @@
   --danger: #ff7b8a;
   --danger-bg: #3a1d22;
   --warning: #d4a72c;
+  --warning-bg: #33290f;
   --gh-btn: #30363d; /* must stay visible on dark bg */
   --gh-btn-hover: #3f464e;
   --gh-btn-fg: #fff;
@@ -293,12 +295,63 @@ body {
   color: var(--fg-faint);
 }
 
-.notice-limit {
-  color: var(--warning);
+/* Failed-turn notice (<ErrorNotice> in chat.tsx). Two tones: advisory for
+   expected, self-resolving conditions (daily limit, provider throttling, a
+   dropped connection) and fault for everything that needs someone to act. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 0.9rem;
 }
 
-.notice-error {
+.notice-advisory {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.notice-fault {
   color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.notice-detail {
+  margin: 0;
+  color: var(--fg);
+  line-height: 1.45;
+}
+
+.notice-technical {
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+}
+
+.notice-technical summary {
+  cursor: pointer;
+}
+
+.notice-technical pre {
+  margin: 0.4rem 0 0;
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notice-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 /* Tool-call step chip ("🔧 query · done") shown inline in assistant bubbles. */

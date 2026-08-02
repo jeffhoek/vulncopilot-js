@@ -6,6 +6,7 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThemeToggle } from "./theme-toggle";
+import { describeChatError, isAdvisory } from "@/src/lib/chat-errors";
 
 interface ChatProps {
   documentCount: number | null;
@@ -28,7 +29,7 @@ interface ChatProps {
 // the default of 50 this is immaterial, but the unit differs by design.
 export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, signOutAction }: ChatProps) {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error, regenerate, clearError } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
       // Client-held history, trimmed to the last N messages sent per request.
@@ -100,14 +101,22 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
             <MessageBubble key={m.id} message={m} />
           ))}
           {status === "submitted" && <div className="thinking">Thinking…</div>}
-          {error &&
-            (/^You've reached your daily limit/.test(error.message) ? (
-              // Phase 4: the rate-limit body is a user-facing notice, not a fault —
-              // render the verbatim message without the "Error:" framing.
-              <div className="notice-limit">{error.message}</div>
-            ) : (
-              <div className="notice-error">Error: {error.message}</div>
-            ))}
+          {error && (
+            <ErrorNotice
+              message={error.message}
+              // regenerate() drops a partially-streamed assistant message and
+              // re-sends the last user turn; with no messages there is nothing
+              // to regenerate, so the button is withheld rather than throwing.
+              onRetry={
+                messages.length > 0
+                  ? () => {
+                      clearError();
+                      void regenerate();
+                    }
+                  : undefined
+              }
+            />
+          )}
           <div ref={endRef} />
         </div>
 
@@ -128,6 +137,51 @@ export function Chat({ documentCount, actionButtons, maxHistoryMessages, user, s
           </button>
         </form>
       </section>
+    </div>
+  );
+}
+
+// A failed turn, rendered as a typed notice rather than a raw dump of whatever
+// string landed in `error.message`. That string can be a plain-text body from
+// our own route or an in-band stream error from the provider (the latter used
+// to arrive as JSON-with-stack-trace — see src/lib/chat-errors.ts), so the
+// classification lives in that shared module and this component only presents
+// it: tone (advisory vs. fault) and the one action that actually helps.
+function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const info = describeChatError(message);
+  const advisory = isAdvisory(info.kind);
+  // A dead session or a blown context window can't be fixed by re-sending;
+  // reloading re-runs auth and starts a fresh (client-held) conversation.
+  const canReload = info.kind === "session-expired" || info.kind === "context-length";
+  const canRetry = info.retryable && onRetry != null;
+
+  return (
+    <div className={advisory ? "notice notice-advisory" : "notice notice-fault"} role="alert">
+      <div className="notice-head">
+        <span aria-hidden="true">{advisory ? "⚠️" : "⛔"}</span>
+        <strong>{info.title}</strong>
+      </div>
+      <p className="notice-detail">{info.detail}</p>
+      {info.technical && (
+        <details className="notice-technical">
+          <summary>Technical detail</summary>
+          <pre>{info.technical}</pre>
+        </details>
+      )}
+      {(canRetry || canReload) && (
+        <div className="notice-actions">
+          {canRetry && (
+            <button type="button" className="pill" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+          {canReload && (
+            <button type="button" className="pill" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
