@@ -33,17 +33,21 @@ Next.js (App Router)
 ├── /api/chat          → Mastra RAG agent
 └── /api/mcp           → Mastra MCP server (x-api-key)
         │
-   Mastra agent ── tools: retrieve (semantic search), query (read-only SQL)
+   Mastra agent ── tools: retrieve (semantic search), query (read-only SQL),
+                          risk_score (composite 0-100 score)
         │
    PostgreSQL + pgvector   ◄── populated by a separate Python ETL pipeline
 ```
 
-The agent has two tools:
+The agent has three tools:
 
 - **retrieve** — semantic search across KEV + NVD via pgvector cosine similarity. Best for
   conceptual questions.
 - **query** — executes validated, read-only `SELECT` statements. Best for counts, top-N,
   filters, grouping, and JOINs across KEV, NVD, and CWE tables.
+- **risk_score** — composite 0–100 risk score for up to 25 named CVEs, each with a
+  per-signal breakdown, read from the `v_cve_risk` view. Ranking or counting across the
+  whole corpus goes through **query** against that same view instead.
 
 Model routing uses the Vercel AI SDK (Anthropic Claude for generation, OpenAI
 `text-embedding-3-small` for embeddings).
@@ -60,6 +64,11 @@ database and reads it.
 - The only table this app writes is `user_usage` (rate limiting).
 - Schema source of truth lives on the ETL side (`rag/database.py` in
   [`vulncopilot`](https://github.com/jeffhoek/vulncopilot)).
+- `risk_score` and the risk quick-query buttons read the `v_cve_risk` **materialized
+  view**, which the ETL creates and refreshes as its last step. It must exist and be
+  granted to the app's read-only role, or those queries fail with an undefined-relation
+  error; scores are stale by at most one ETL cycle. The blend itself is defined once, in
+  `rag/risk.py` on the ETL side — this app never recomputes it.
 
 You need a populated database before this app is useful. Set up the ETL pipeline first —
 see the [`vulncopilot` data-loading guide](https://github.com/jeffhoek/vulncopilot/blob/main/docs/data-loading.md)
@@ -98,7 +107,7 @@ view the `/admin` usage dashboard.
 
 ## MCP server
 
-`/api/mcp` exposes the same `retrieve` and `query` tools over MCP (streamable-http),
+`/api/mcp` exposes the same `retrieve`, `query`, and `risk_score` tools over MCP (streamable-http),
 guarded by the `x-api-key` header (`MCP_API_KEY`). Leaving `MCP_API_KEY` unset makes the
 endpoint unauthenticated — set it before deploying.
 
@@ -148,7 +157,7 @@ pages/api/      Pages Router — api/mcp.ts (needs native Node req/res; see IMPL
 auth.ts         NextAuth (GitHub provider + allow-list gate)
 src/mastra/     Mastra instance, agent, tools, vector access
   agents/       RAG agent (model + system prompt + tools)
-  tools/        query.ts (SQL) · retrieve.ts (semantic search)
+  tools/        query.ts (SQL) · retrieve.ts (semantic search) · risk-score.ts (composite score)
 src/lib/        config (zod env), auth allow-list, rate limiting, sql guards, db pool
 Dockerfile      Multi-stage build → standalone, non-root runtime image
 ```
