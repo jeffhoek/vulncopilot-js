@@ -8,10 +8,13 @@ import { toAISdkStream } from "@mastra/ai-sdk";
 import { mastra } from "@/src/mastra";
 import { auth } from "@/auth";
 import { config } from "@/src/lib/config";
-import { pool } from "@/src/lib/db";
+import { usagePool } from "@/src/lib/db";
 import {
   checkAndIncrement,
   currentDailyCount,
+  currentGlobalDailyUsage,
+  exceedsGlobalCap,
+  globalLimitMessage,
   limitFor,
   limitMessage,
 } from "@/src/lib/usage";
@@ -26,6 +29,15 @@ const RATE_LIMIT_CONFIG = {
   adminDailyQueryLimit: config.ADMIN_DAILY_QUERY_LIMIT,
   adminUserIdentifiers: config.ADMIN_USER_IDENTIFIERS,
 };
+
+const GLOBAL_LIMIT_CONFIG = {
+  globalDailyQueryLimit: config.GLOBAL_DAILY_QUERY_LIMIT,
+  globalDailyTokenLimit: config.GLOBAL_DAILY_TOKEN_LIMIT,
+};
+
+// Skip the extra aggregate query entirely when neither ceiling is configured.
+const GLOBAL_CAP_ENABLED =
+  GLOBAL_LIMIT_CONFIG.globalDailyQueryLimit > 0 || GLOBAL_LIMIT_CONFIG.globalDailyTokenLimit > 0;
 
 // `useChat` surfaces a non-ok response's raw body as `error.message`, so error
 // responses the user can actually hit are plain text carrying a `[vc:<kind>]`
@@ -68,6 +80,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   const userId = session.userId;
   const limit = limitFor(userId, RATE_LIMIT_CONFIG);
+  const isAdmin = config.ADMIN_USER_IDENTIFIERS.includes(userId);
 
   let messages: UIMessage[];
   let chatId: string | undefined;
@@ -94,13 +107,36 @@ export async function POST(req: Request): Promise<Response> {
   // tag tells the client to render it as an advisory, not a fault. 429 = Too
   // Many Requests.
   try {
-    if ((await currentDailyCount(pool, userId)) >= limit) {
+    if ((await currentDailyCount(usagePool, userId)) >= limit) {
       console.warn(`[rate-limit] pre-check blocked user=${userId} limit=${limit}`);
       return noticeResponse(429, "daily-limit", limitMessage(limit));
     }
+
+    // Service-wide ceiling: the backstop against a domain-wide allow-list
+    // multiplying total spend by headcount. Admins are exempt so a tripped cap
+    // never locks the owner out of diagnosing it. Like the per-user gate this is
+    // a pre-check only — usage is recorded post-run, so the same streaming
+    // TOCTOU applies (see FLAGGED DIVERGENCE above): a concurrent burst can
+    // overshoot slightly before the next request is refused.
+    if (GLOBAL_CAP_ENABLED && !isAdmin) {
+      const globalUsage = await currentGlobalDailyUsage(usagePool);
+      if (exceedsGlobalCap(globalUsage, GLOBAL_LIMIT_CONFIG)) {
+        console.warn(
+          `[rate-limit] GLOBAL cap blocked user=${userId} queries=${globalUsage.queries}/${GLOBAL_LIMIT_CONFIG.globalDailyQueryLimit} tokens=${globalUsage.tokens}/${GLOBAL_LIMIT_CONFIG.globalDailyTokenLimit}`,
+        );
+        // Tagged like the per-user gate so the client renders it as an advisory
+        // notice. `globalLimitMessage` deliberately says nothing about limits,
+        // and a tagged body keeps that server-authored wording verbatim —
+        // untagged it would fall through to the `unknown` kind and be shown as
+        // a generic fault.
+        return noticeResponse(429, "daily-limit", globalLimitMessage());
+      }
+    }
   } catch (err) {
     // A pre-check DB hiccup must not hard-fail the request; the authoritative
-    // upsert below is the real gate. Log and proceed.
+    // upsert below is the real gate. Log and proceed. Note this fails OPEN for
+    // the global cap too — a DB outage should not take chat down, and the
+    // billing alert is the second line of defense.
     console.error("Rate-limit pre-check failed", err);
   }
 
@@ -128,7 +164,7 @@ export async function POST(req: Request): Promise<Response> {
           const inputTokens = event.totalUsage.inputTokens ?? 0;
           const outputTokens = event.totalUsage.outputTokens ?? 0;
           const { allowed, newCount } = await checkAndIncrement(
-            pool,
+            usagePool,
             userId,
             limit,
             inputTokens,

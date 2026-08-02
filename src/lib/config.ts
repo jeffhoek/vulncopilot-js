@@ -184,6 +184,17 @@ const BOOL = z.preprocess((v) => {
 const ConfigSchema = z.object({
   // Required.
   PG_DATABASE_URL: z.string().min(1, "PG_DATABASE_URL is required"),
+  // Optional second connection, used ONLY for `user_usage` (rate limiting +
+  // /admin). Its role must not be able to read the vulnerability tables and,
+  // more importantly, the PG_DATABASE_URL role must not be able to read
+  // `user_usage` — the `query` tool runs model-authored SELECTs on that
+  // connection, and validateSql's denylist on that one table name is a stopgap
+  // standing in for a grant it cannot enforce.
+  // Unset → falls back to PG_DATABASE_URL, which preserves today's single-role
+  // behavior (and today's exposure). See the reference repo's
+  // docs/supabase-readonly-role.md, Part 2.5 (app_usage) for the grants and the
+  // required rollout order.
+  PG_USAGE_DATABASE_URL: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
 
   // ── Database timeouts (runtime-tunable via env, no rebuild) ──────────────
   // Per-statement wall-clock cap applied (via SET LOCAL) to the LLM-driven
@@ -229,10 +240,17 @@ const ConfigSchema = z.object({
   // ── Auth (Phase 3) ──────────────────────────────────────────────────────
   // Allow-list gate, read by the NextAuth `signIn` callback via decideAccess()
   // (reference `config.py` Authorization block + `app.py::oauth_callback`).
+  // All three lists are matched case-insensitively (decideAccess folds both
+  // sides), so casing in these env vars does not matter.
   OPEN_REGISTRATION: BOOL, // true = any GitHub user allowed
   ALLOWED_EMAILS: JSON_STR_LIST, // exact addresses, e.g. ["alice@example.com"]
   ALLOWED_EMAIL_DOMAINS: JSON_STR_LIST, // e.g. ["mycompany.com"]
   ALLOWED_LOGINS: JSON_STR_LIST, // GitHub usernames
+  // JWT session lifetime in seconds — the only way to revoke access, since
+  // there is no server-side session store (see auth.ts). Default 24h; NextAuth's
+  // own default is 30 days, which is too long once a whole email domain is
+  // admitted. Shorter = faster revocation, more frequent re-consent round trips.
+  SESSION_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(86_400),
   // NextAuth also reads AUTH_SECRET / AUTH_GITHUB_ID / AUTH_GITHUB_SECRET from
   // env by convention; they are surfaced here (optional) for a single typed
   // config surface and so a blank value is treated as unset. Kept optional —
@@ -250,6 +268,16 @@ const ConfigSchema = z.object({
   DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(20),
   ADMIN_DAILY_QUERY_LIMIT: z.coerce.number().int().positive().default(100000),
   ADMIN_USER_IDENTIFIERS: JSON_STR_LIST,
+
+  // ── Global (service-wide) daily cap ─────────────────────────────────────
+  // Not in the reference. DAILY_QUERY_LIMIT bounds one user; nothing bounded
+  // total spend, so admitting a whole email domain multiplied the worst case by
+  // the headcount. These cap the SUM across all users for the current UTC day
+  // and are the backstop for a runaway bill. 0 = disabled (the default, so
+  // existing single-user deploys are unaffected) — set both before widening the
+  // allow-list. Admins are exempt so the owner can still diagnose a tripped cap.
+  GLOBAL_DAILY_QUERY_LIMIT: z.coerce.number().int().nonnegative().default(0),
+  GLOBAL_DAILY_TOKEN_LIMIT: z.coerce.number().int().nonnegative().default(0),
 
   // ── Admin dashboard cost estimation (Phase 5) ───────────────────────────
   // USD per million tokens, used only by /admin to estimate spend from the

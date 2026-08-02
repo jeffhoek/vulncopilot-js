@@ -95,6 +95,19 @@ The database, schema, vectors, and roles already exist. This app connects as the
 `docs/supabase-readonly-role.md` (SELECT on the vuln tables, plus INSERT/UPDATE
 on `user_usage` for rate limiting).
 
+**Optionally a second role.** `PG_DATABASE_URL` carries the agent's `query` tool,
+which executes model-authored SELECTs — so every table its role can read is
+readable by any signed-in user who asks, `user_usage` included. Setting
+`PG_USAGE_DATABASE_URL` to the **`app_usage`** role (reference repo Part 2.5)
+moves rate limiting and `/admin` onto their own connection so `user_usage` can be
+revoked from `app_readonly`. Unset, one role does both and the table stays
+readable through chat. The app logs a warning at boot if it is unset while
+`ALLOWED_EMAIL_DOMAINS` or `OPEN_REGISTRATION` is on.
+
+> The revoke is shared state — the Python app reads the same database and the
+> same role. Follow the rollout order in the reference doc: grant, wire **both**
+> apps, then revoke.
+
 ### Connection string
 
 Use the **transaction pooler (port 6543)**. With Supavisor the username must
@@ -181,6 +194,7 @@ Store every sensitive value in Secret Manager, never in `.env.yaml`:
 | `AUTH_GITHUB_ID` | Production OAuth app client id (step 4) |
 | `AUTH_GITHUB_SECRET` | Production OAuth app client secret (step 4) |
 | `MCP_API_KEY` | `openssl rand -hex 32` — **required**: if unset, `/api/mcp` serves unauthenticated |
+| `PG_USAGE_DATABASE_URL` | *Optional.* Supabase `app_usage` pooler URL (step 3) — also embeds a password, so it belongs here, not in `.env.yaml` |
 
 Create each one and grant the runtime SA access (prompts for the value so it
 never lands in shell history):
@@ -235,21 +249,66 @@ TOP_K: "5"
 MAX_HISTORY_MESSAGES: "50"
 ACTION_BUTTONS: '["List the 10 newest KEV entries by date_added","List KEV entries with known ransomware use","CVE-2021-44228 (Log4Shell)","CVE-2017-0144 (EternalBlue)","CVE-2023-34362 (MOVEit Transfer)","Reference URLs for CVE-2025-53770 (SharePoint ToolShell)","Top 10 AI-related CVEs in 2026 by CVSS score","LLM prompt injection vulns","typo squatting","Anthropic Claude vulns","VPN and remote access vulns","Top vendors in KEV","Which weakness types appear most in KEV?","Top actively-exploited, automatable, total-impact CVEs","How many CVEs are in each SSVC exploitation state?","CVSS 10.0 CVEs not yet exploited (SSVC none)","High-EPSS CVEs not yet listed in KEV","CVSS 9+ CVEs with low exploitation likelihood","Biggest EPSS movers since the last update","Top 20 CVEs by composite risk score","Highest-risk CVEs not yet on KEV","Risk score breakdown for CVE-2021-44228"]'
 
-# Authorization (allow-list; JSON arrays)
+# Authorization (allow-list; JSON arrays, matched case-insensitively)
 OPEN_REGISTRATION: "false"
 ALLOWED_LOGINS: '["jeffhoek"]'
 # ALLOWED_EMAILS: '["alice@example.com"]'
+# Domain-wide access — read the warning under "Opening access to a whole
+# email domain" below before uncommenting.
 # ALLOWED_EMAIL_DOMAINS: '["mycompany.com"]'
+
+# JWT session lifetime (seconds). The only revocation lever — sessions are
+# stateless, so an allow-list removal takes effect only when the token expires.
+SESSION_MAX_AGE_SECONDS: "86400"
 
 # Rate limiting + /admin access (stable github:<id> keys)
 ADMIN_USER_IDENTIFIERS: '["github:12345678"]'
 DAILY_QUERY_LIMIT: "20"
 ADMIN_DAILY_QUERY_LIMIT: "100000"
 
+# Service-wide daily ceiling across ALL users (0 = disabled; admins exempt).
+# Required in practice once ALLOWED_EMAIL_DOMAINS is set.
+GLOBAL_DAILY_QUERY_LIMIT: "0"
+GLOBAL_DAILY_TOKEN_LIMIT: "0"
+
 # /admin cost estimate (USD per million tokens)
 LLM_INPUT_COST_PER_MILLION: "3.00"
 LLM_OUTPUT_COST_PER_MILLION: "15.00"
 ```
+
+### Opening access to a whole email domain
+
+`ALLOWED_EMAIL_DOMAINS` admits everyone at a domain, which changes the threat and
+cost model of a deployment that was sized for a hand-picked allow-list. Before
+uncommenting it:
+
+1. **Set `GLOBAL_DAILY_QUERY_LIMIT` and `GLOBAL_DAILY_TOKEN_LIMIT`.**
+   `DAILY_QUERY_LIMIT` bounds one user; nothing else bounds the total. At 20
+   queries/user/day and ~10–30k tokens per query, 50 users maxing out is a
+   plausible $50–150/day on your own API keys.
+2. **Set a hard billing alert** on the Anthropic and OpenAI accounts. The global
+   cap fails *open* on a DB error by design — billing alerts are the second line.
+3. **Understand what the gate actually checks.** It matches the email on the
+   user's GitHub account, not a company SSO assertion. Employees whose GitHub
+   uses a personal address get denied; anyone keeping a company address on their
+   GitHub account is admitted, including after they leave.
+4. **Know your revocation window.** Removing the domain does not sign anyone out
+   — stateless JWTs stay valid until `SESSION_MAX_AGE_SECONDS` elapses.
+5. **Remember every signed-in user can run arbitrary `SELECT`** through the agent's
+   `query` tool, against everything `app_readonly` can read. `user_usage` (every
+   user's `github:<id>` and token totals) is the exception: `validateSql` refuses
+   any statement naming it. That check is a real guard, not the system prompt —
+   but it is a denylist on one table name, matched as a substring, so treat it as
+   a stopgap rather than the boundary. Setting `PG_USAGE_DATABASE_URL` and
+   completing the `app_usage` rollout (step 3) is what actually closes it, by
+   revoking the table from the role instead of asking the app to avoid it. For
+   every other table there is no such check: don't widen those grants, and assume
+   anything readable by that role is readable by every user you admit.
+6. **Check the data-flow is acceptable to them.** Chat contents go to Anthropic,
+   OpenAI (embeddings), and Langfuse if tracing is on. A client's security team
+   will care where their vulnerability questions land.
+7. **Revisit `--max-instances 3`** (step 8) and the Supabase pooler ceiling if
+   more than a handful of people will use it concurrently.
 
 ## 7. Local smoke test against Supabase (do this before deploying)
 

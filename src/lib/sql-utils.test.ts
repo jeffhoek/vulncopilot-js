@@ -73,6 +73,53 @@ describe("validateSql", () => {
   });
 });
 
+// Blocked-identifier stopgap (the second deliberate deviation). Defense in depth
+// behind the app_usage role split — see the comment in sql-utils.ts.
+describe("validateSql blocked identifiers", () => {
+  it("rejects a bare read of user_usage", () => {
+    expect(validateSql("SELECT * FROM user_usage")).not.toBeNull();
+  });
+  it("rejects it regardless of casing", () => {
+    expect(validateSql("select COUNT(*) from USER_USAGE")).not.toBeNull();
+  });
+  it("rejects a schema-qualified read", () => {
+    expect(validateSql("SELECT * FROM public.user_usage")).not.toBeNull();
+  });
+  it("rejects a quoted identifier", () => {
+    expect(validateSql('SELECT * FROM "user_usage"')).not.toBeNull();
+  });
+  it("rejects it inside a subquery", () => {
+    expect(
+      validateSql("SELECT cve_id FROM kev_vulnerabilities WHERE 1 IN (SELECT query_count FROM user_usage)"),
+    ).not.toBeNull();
+  });
+  it("rejects it inside a derived table", () => {
+    expect(validateSql("SELECT * FROM (SELECT * FROM user_usage) x")).not.toBeNull();
+  });
+  it("rejects a JOIN against it", () => {
+    expect(
+      validateSql("SELECT k.cve_id FROM kev_vulnerabilities k JOIN user_usage u ON true"),
+    ).not.toBeNull();
+  });
+  it("rejects the backing sequence", () => {
+    expect(validateSql("SELECT last_value FROM user_usage_id_seq")).not.toBeNull();
+  });
+  it("names the blocked table in the error so the model can explain itself", () => {
+    expect(validateSql("SELECT * FROM user_usage")).toContain("user_usage");
+  });
+  it("rejects unicode-escape syntax, which could spell the name indirectly", () => {
+    expect(validateSql('SELECT * FROM U&"user\\5fusage"')).not.toBeNull();
+  });
+  it("does not reject ordinary corpus queries", () => {
+    expect(validateSql("SELECT cve_id FROM kev_vulnerabilities LIMIT 10")).toBeNull();
+    expect(validateSql("SELECT * FROM nvd_vulnerabilities WHERE cve_id = 'CVE-2021-44228'")).toBeNull();
+    expect(validateSql("SELECT user_interaction FROM nvd_vulnerabilities")).toBeNull();
+  });
+  it("does not trip on a bitwise & against a quoted literal", () => {
+    expect(validateSql("SELECT * FROM etl_runs WHERE flags & '1' = '1'")).toBeNull();
+  });
+});
+
 describe("applyRowLimit", () => {
   it("injects LIMIT when absent", () => {
     expect(applyRowLimit("SELECT * FROM t", 100)).toBe("SELECT * FROM t LIMIT 100");

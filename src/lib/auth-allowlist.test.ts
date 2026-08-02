@@ -64,3 +64,47 @@ describe("decideAccess (port of oauth_callback allow-list)", () => {
     expect(d.allowed).toBe(false);
   });
 });
+
+// Case folding is a deliberate divergence from the reference (see the comment in
+// auth-allowlist.ts). GitHub returns whatever casing the account holder typed.
+describe("decideAccess case-insensitivity", () => {
+  it("matches a domain regardless of casing on either side", () => {
+    const d = decideAccess(
+      { id: 3, login: "carol", email: "Carol.Smith@MyCompany.COM" },
+      { ...LOCKED, allowedEmailDomains: ["MyCompany.com"] },
+    );
+    expect(d.allowed).toBe(true);
+  });
+
+  it("matches an exact email regardless of casing", () => {
+    const d = decideAccess(
+      { id: 4, login: "dave", email: "Dave@Example.com" },
+      { ...LOCKED, allowedEmails: ["dave@example.com"] },
+    );
+    expect(d.allowed).toBe(true);
+  });
+
+  it("matches a GitHub login regardless of casing", () => {
+    const d = decideAccess(
+      { id: 5, login: "JeffHoek", email: "" },
+      { ...LOCKED, allowedLogins: ["jeffhoek"] },
+    );
+    expect(d.allowed).toBe(true);
+  });
+
+  it("tolerates stray whitespace in allow-list entries", () => {
+    const d = decideAccess(
+      { id: 6, login: "erin", email: "erin@mycompany.com" },
+      { ...LOCKED, allowedEmailDomains: [" mycompany.com "] },
+    );
+    expect(d.allowed).toBe(true);
+  });
+
+  it("still requires the full domain — a suffix lookalike does not match", () => {
+    const d = decideAccess(
+      { id: 7, login: "mallory", email: "mallory@evilmycompany.com" },
+      { ...LOCKED, allowedEmailDomains: ["mycompany.com"] },
+    );
+    expect(d.allowed).toBe(false);
+  });
+});

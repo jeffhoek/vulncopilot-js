@@ -1,12 +1,33 @@
 // Ported from the reference Python app: `rag/sql_utils.py`.
 // Keep behavior at parity with the reference (including the deliberately-ported
-// first-LIMIT quirk in applyRowLimit); the only intentional deviation is the
-// multi-statement rejection added to validateSql — asyncpg rejected
-// `SELECT 1; DELETE ...` implicitly, node-postgres does not (see IMPLEMENTATION.md).
+// first-LIMIT quirk in applyRowLimit). Three intentional deviations, all added
+// guards in validateSql:
+//   1. multi-statement rejection — asyncpg rejected `SELECT 1; DELETE ...`
+//      implicitly, node-postgres does not (see IMPLEMENTATION.md);
+//   2. the blocked-identifier check below;
+//   3. the blocked-function check below.
 
 export const MAX_QUERY_ROWS = 100;
 export const MAX_CELL_CHARS = 200;
 export const MAX_OUTPUT_CHARS = 20_000;
+
+// Tables the `query` tool must never read, whatever its role is granted.
+//
+// This is a stopgap, not the boundary. The real fix is the `app_usage` role
+// split (reference repo docs/supabase-readonly-role.md Part 2.5) — until
+// PG_USAGE_DATABASE_URL is set AND the revoke has run, this check is the only
+// thing between a signed-in user and every other user's `github:<id>` and token
+// totals, because the SELECT-only rule bounds the statement type, not the tables.
+// It stays afterwards as defense in depth, and because the two apps sharing this
+// database can drift out of step on grants.
+//
+// Matched as a case-insensitive substring, which is hard to evade for a table
+// name: a plain SELECT cannot parameterize a relation, so the name has to appear
+// literally. `public.user_usage` and `"user_usage"` are caught, and so is
+// `user_usage_id_seq`. Cost of the substring approach is false positives — a
+// column alias or string literal containing the name is refused too. Nothing in
+// the KEV/NVD corpus needs that.
+const BLOCKED_IDENTIFIERS = ["user_usage"];
 
 // Defense-in-depth denylist (added guard, beyond the reference). `SET TRANSACTION
 // READ ONLY` blocks writes but not reads, so a valid SELECT can still invoke
@@ -56,6 +77,18 @@ export function validateSql(sql: string): string | null {
   const withoutTrailing = trimmed.replace(/;\s*$/, "");
   if (withoutTrailing.includes(";")) {
     return "Error: Only a single SQL statement is permitted.";
+  }
+  const lowered = withoutTrailing.toLowerCase();
+  const blocked = BLOCKED_IDENTIFIERS.find((name) => lowered.includes(name));
+  if (blocked) {
+    return `Error: The ${blocked} table is not available to this tool.`;
+  }
+  // Postgres U&'…' / U&"…" unicode escapes can spell an identifier without its
+  // characters appearing literally (U&"user\5fusage"), which would slip past the
+  // substring check above. No legitimate corpus query needs that syntax, so
+  // reject it outright rather than trying to decode it.
+  if (/\bu&["']/i.test(lowered)) {
+    return "Error: Unicode escape syntax (U&'…') is not permitted.";
   }
   // Block file/large-object/network function calls (see BLOCKED_FUNCTIONS).
   if (BLOCKED_FUNCTION_RE.test(trimmed)) {
