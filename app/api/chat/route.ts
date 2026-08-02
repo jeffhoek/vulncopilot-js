@@ -15,6 +15,7 @@ import {
   limitFor,
   limitMessage,
 } from "@/src/lib/usage";
+import { tagged, toStreamErrorText, type ChatErrorKind } from "@/src/lib/chat-errors";
 
 // pg + Mastra are Node-only; force the Node runtime (not Edge).
 export const runtime = "nodejs";
@@ -25,6 +26,17 @@ const RATE_LIMIT_CONFIG = {
   adminDailyQueryLimit: config.ADMIN_DAILY_QUERY_LIMIT,
   adminUserIdentifiers: config.ADMIN_USER_IDENTIFIERS,
 };
+
+// `useChat` surfaces a non-ok response's raw body as `error.message`, so error
+// responses the user can actually hit are plain text carrying a `[vc:<kind>]`
+// tag (see src/lib/chat-errors.ts) — the client renders them as a typed notice
+// rather than as "Error: <body>".
+function noticeResponse(status: number, kind: ChatErrorKind, detail: string) {
+  return new Response(tagged(kind, detail), {
+    status,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
 
 // Phase 2: streaming. Accepts { messages } as AI SDK v5 UIMessages (already
 // trimmed to MAX_HISTORY_MESSAGES by the client — see app/chat.tsx), converts
@@ -48,7 +60,11 @@ export async function POST(req: Request): Promise<Response> {
   // Auth gate (Phase 3): no valid session → 401 before any LLM work.
   const session = await auth();
   if (!session?.userId) {
-    return Response.json({ error: "Unauthorized." }, { status: 401 });
+    return noticeResponse(
+      401,
+      "session-expired",
+      "Your sign-in is no longer valid. Reload the page to sign in again.",
+    );
   }
   const userId = session.userId;
   const limit = limitFor(userId, RATE_LIMIT_CONFIG);
@@ -73,16 +89,14 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // Cheap best-effort pre-check: block an already-over-limit user before the LLM
-  // call (reference `enforce_daily_limit`, `count >= limit`). The transport
-  // surfaces a non-ok response body as `error.message`, so the plain-text limit
-  // message renders verbatim in the UI. 429 = Too Many Requests.
+  // call (reference `enforce_daily_limit`, `count >= limit`). The limit sentence
+  // is verbatim from `limitMessage` (it names the user's actual limit) and the
+  // tag tells the client to render it as an advisory, not a fault. 429 = Too
+  // Many Requests.
   try {
     if ((await currentDailyCount(pool, userId)) >= limit) {
       console.warn(`[rate-limit] pre-check blocked user=${userId} limit=${limit}`);
-      return new Response(limitMessage(limit), {
-        status: 429,
-        headers: { "content-type": "text/plain; charset=utf-8" },
-      });
+      return noticeResponse(429, "daily-limit", limitMessage(limit));
     }
   } catch (err) {
     // A pre-check DB hiccup must not hard-fail the request; the authoritative
@@ -138,15 +152,34 @@ export async function POST(req: Request): Promise<Response> {
     // Mastra stream into the AI SDK UI-message chunk stream (text deltas + tool
     // steps), which createUIMessageStreamResponse serves as the SSE protocol
     // useChat expects. `originalMessages` prevents duplicated assistant messages.
+    //
+    // Both `onError` hooks matter, and they catch different things. A provider
+    // failure (spent credit balance, 429, overload) surfaces as an `error` chunk
+    // *inside* the Mastra stream — headers are already committed, so it can only
+    // be reported in-band — and toAISdkStream's default handler would
+    // JSON.stringify the whole payload, stack trace and all, straight into the
+    // transcript. createUIMessageStream's handler covers the other case: the
+    // merged stream rejecting outright. Both emit only the tagged, user-safe
+    // text; the full error goes to the server log.
+    const onError = (err: unknown) => {
+      console.error("Chat stream error", err);
+      return toStreamErrorText(err);
+    };
     const uiMessageStream = createUIMessageStream({
       originalMessages: messages,
+      onError,
       execute: ({ writer }) => {
-        writer.merge(toAISdkStream(stream, { from: "agent" }));
+        writer.merge(toAISdkStream(stream, { from: "agent", onError }));
       },
     });
     return createUIMessageStreamResponse({ stream: uiMessageStream });
   } catch (err) {
+    // Failures before the stream exists (agent construction, an immediately
+    // rejected provider call) — still a normal HTTP error response here.
     console.error("Chat route error", err);
-    return Response.json({ error: "Failed to generate a response." }, { status: 500 });
+    return new Response(toStreamErrorText(err), {
+      status: 500,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
   }
 }
