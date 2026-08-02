@@ -185,6 +185,37 @@ rate limiting, admin dashboard, /etl-stats, MCP, streaming, action buttons, UI p
       `^` ranges otherwise pulled config-next 16 / eslint 10, a major mismatch).
 - [x] Commit Phase 8
 
+## Phase 9 — Graceful failure surfacing
+
+Trigger: an exhausted Anthropic API credit balance rendered in the transcript as
+`Error: {"message":…,"stack":"… /app/.next/server/app/api/chat/route.js:106 …"}` — the
+raw provider payload with an internal stack trace, because the failure happens
+*mid-stream* (headers already committed) and Mastra's default `toAISdkStream`
+`onError` JSON.stringify's the error object.
+
+- [x] `src/lib/chat-errors.ts` — shared classifier mapping any raw error shape (Error,
+      Mastra's `{message,name,statusCode}` payload, a JSON-encoded copy of it, nested
+      `cause`) onto a small set of kinds: spent credit, rejected API key, provider
+      throttling, overload, context overflow, network drop, expired session, daily
+      limit, unknown. **Order matters:** a spent credit balance is a *400* whose only
+      distinguishing feature is the message text, so it is matched before status codes.
+- [x] `/api/chat` passes `onError` to *both* `toAISdkStream` and `createUIMessageStream`
+      (in-band stream error vs. the merged stream rejecting outright); each logs the
+      full error server-side and puts only user-safe text on the wire. Error *responses*
+      (401/429/500) are plain text on the same footing.
+- [x] Wire format: `[vc:<kind>] <detail>` — `useChat` only carries a string, so the tag
+      is how the client picks tone and actions without re-deriving them from prose.
+      Untagged text (older server, transport-level failure) is classified client-side by
+      the same matcher, so nothing renders verbatim as `Error: {…}` again.
+- [x] `<ErrorNotice>` replaces the two-branch inline error text: title + written
+      explanation, advisory vs. fault tone, Retry (`regenerate()`) where re-sending can
+      plausibly work, Reload for a dead session or blown context window, and the raw
+      string collapsed under "Technical detail" only when it stayed unclassified.
+- [x] Tests: `chat-errors.test.ts` (15) — real spent-credit payload, kind boundaries,
+      tag round-trip, junk/cyclic input.
+- [ ] Verify live (`pnpm dev`, real DB): needs a key with no credit, or a temporarily
+      invalid one, to reproduce the mid-stream path in the browser.
+
 ---
 
 ## Porting hazards (flagged; resolutions chosen)
