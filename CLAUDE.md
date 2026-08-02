@@ -44,13 +44,23 @@ Full migration plan: `PORTING.md` in this repo.
 - Embeddings: **`text-embedding-3-small`, 1536 dimensions.** Pin it. A mismatch silently
   breaks cosine search.
 - Tables: `kev_vulnerabilities`, `nvd_vulnerabilities` (each `content TEXT`,
-  `embedding vector(1536)`, HNSW `vector_cosine_ops`), `cwe_definitions`, `etl_runs`,
-  `user_usage`. DDL: reference repo `rag/database.py`.
+  `embedding vector(1536)`, HNSW `vector_cosine_ops`), `cwe_definitions`, `epss_scores`,
+  `etl_runs`, `user_usage`. DDL: reference repo `rag/database.py`.
+- `v_cve_risk` is a **materialized view** (~372k rows, one per CVE) holding the composite
+  0-100 `risk_score` and its six `c_*` contributions. The **weights and the arithmetic live
+  only in the view** (reference `rag/risk.py` generates its DDL from the constants) — never
+  re-implement the blend here, in SQL or in TypeScript; read the columns. The Python ETL
+  creates it and refreshes it as its last step, so scores are stale by up to one ETL cycle.
+- `epss_scores` (FIRST.org exploitation likelihood, ~353k rows, refreshed daily) is
+  **SQL-only and deliberately excluded from embedded content** — scores change daily for
+  every CVE, so embedding them would invalidate the whole vector index every day. To show
+  EPSS on retrieval results, join it by `cve_id` *after* retrieval; never bake it into the
+  embedded text.
 - Port the **system prompt verbatim** from reference `config.py` (it describes the schema
   the SQL tool depends on, the "query BOTH KEV and NVD for a CVE" rule, and CWE joins).
 - Do **not** re-embed the corpus — vectors already exist in the DB.
 
-## The two agent tools (parity targets)
+## The three agent tools (parity targets)
 
 1. **`query(sql)`** — read-only SQL. Must call `validateSql` then `applyRowLimit` before
    executing (port both from reference `sql_utils.py`). Return a formatted table or an
@@ -58,6 +68,10 @@ Full migration plan: `PORTING.md` in this repo.
 2. **`retrieve(query)`** — semantic search. Embed the query via AI SDK, then run the
    **cross-table `UNION ALL` cosine query** over both vuln tables (reference
    `vector_store.py`). Prefer hand-written SQL over the `PgVector` query API for this UNION.
+3. **`risk_score(cve_ids)`** — composite score for up to 25 **named** CVEs, ranked
+   highest-risk first, each with a per-signal rationale (reference `rag/risk.py`). Builds
+   its own parameterized `SELECT` against `v_cve_risk`, so it bypasses `validateSql`. Bulk
+   ranking belongs in `query` against the view, not in repeated calls here.
 
 ## Rate limiting (preserve exact semantics)
 
