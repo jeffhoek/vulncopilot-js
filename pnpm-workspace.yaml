@@ -3,3 +3,9 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
+# Transitive pin: @mastra/mcp pulls hono in through @modelcontextprotocol/*,
+# which resolved it to 4.12.28 — the version four open Dependabot advisories
+# cover. This is a patch-level bump inside the same minor. Drop it once the MCP
+# packages raise their own floor past it.
+overrides:
+  hono: '>=4.12.34'
