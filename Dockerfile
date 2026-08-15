@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- deps: install with a frozen lockfile ------------------------------------
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /app
@@ -9,7 +9,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # --- builder: compile the Next.js standalone bundle --------------------------
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /app
@@ -30,7 +30,7 @@ RUN PG_DATABASE_URL=postgres://build:build@localhost:5432/build \
     pnpm build
 
 # --- runner: minimal image, non-root ----------------------------------------
-FROM node:22-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
