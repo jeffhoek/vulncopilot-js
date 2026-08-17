@@ -1,15 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
-// Reads the theme the pre-paint script in layout.tsx already resolved onto <html>.
-// SSR doesn't know the theme, so render a neutral label until mounted.
+// The pre-paint script in layout.tsx resolves the theme onto <html data-theme>
+// before React hydrates, so <html> — not React state — is the source of truth.
+// useSyncExternalStore is the sanctioned way to read that: the server snapshot
+// is null (SSR doesn't know the theme, so the first render shows a neutral
+// label and hydration matches), and the client snapshot is re-read after
+// hydration and whenever a toggle publishes a change.
+const listeners = new Set<() => void>();
+
+function subscribe(onStoreChange: () => void) {
+  listeners.add(onStoreChange);
+  return () => {
+    listeners.delete(onStoreChange);
+  };
+}
+
+function getSnapshot(): "light" | "dark" {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function getServerSnapshot(): null {
+  return null;
+}
+
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark" | null>(null);
-
-  useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
-  }, []);
+  const theme = useSyncExternalStore<"light" | "dark" | null>(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
@@ -20,7 +41,7 @@ export function ThemeToggle() {
       // localStorage can throw (private mode, disabled storage); the in-memory
       // toggle still works for the session, so ignore.
     }
-    setTheme(next);
+    for (const listener of listeners) listener();
   }
 
   return (

@@ -38,7 +38,7 @@ function noticeResponse(status: number, kind: ChatErrorKind, detail: string) {
   });
 }
 
-// Phase 2: streaming. Accepts { messages } as AI SDK v5 UIMessages (already
+// Phase 2: streaming. Accepts { messages } as AI SDK UIMessages (already
 // trimmed to MAX_HISTORY_MESSAGES by the client — see app/chat.tsx), converts
 // them to model messages, and streams the agent's response back as a UI message
 // stream that `useChat` consumes.
@@ -113,7 +113,7 @@ export async function POST(req: Request): Promise<Response> {
     // (analogous to pydantic-ai's result.usage()). Server-side post-stream work
     // like this is fine on a persistent Node server (see `runtime = "nodejs"`);
     // a serverless deploy would need waitUntil to guarantee it completes.
-    const stream = await agent.stream(convertToModelMessages(messages), {
+    const stream = await agent.stream(await convertToModelMessages(messages), {
       // Trace attribution (inert unless Langfuse is configured — see
       // src/mastra/observability.ts). The Langfuse exporter maps
       // metadata.userId → user.id and metadata.sessionId → session.id.
@@ -153,6 +153,11 @@ export async function POST(req: Request): Promise<Response> {
     // steps), which createUIMessageStreamResponse serves as the SSE protocol
     // useChat expects. `originalMessages` prevents duplicated assistant messages.
     //
+    // `version: "v6"` is required: toAISdkStream still defaults to the v5 UI
+    // protocol, whose chunk types don't line up with the `ai` major installed
+    // here. src/mastra/ai-sdk-bridge.test.ts drives this conversion end to end
+    // — a protocol drift here surfaces as a blank transcript, not a build error.
+    //
     // Both `onError` hooks matter, and they catch different things. A provider
     // failure (spent credit balance, 429, overload) surfaces as an `error` chunk
     // *inside* the Mastra stream — headers are already committed, so it can only
@@ -169,7 +174,7 @@ export async function POST(req: Request): Promise<Response> {
       originalMessages: messages,
       onError,
       execute: ({ writer }) => {
-        writer.merge(toAISdkStream(stream, { from: "agent", onError }));
+        writer.merge(toAISdkStream(stream, { from: "agent", version: "v6", onError }));
       },
     });
     return createUIMessageStreamResponse({ stream: uiMessageStream });

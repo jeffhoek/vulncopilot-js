@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to a PR cancels the run still going for the first one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, typecheck, test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm must exist before setup-node, which resolves the pnpm store to
+      # cache by shelling out to it. The version comes from the
+      # `packageManager` field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          # Matches the Dockerfile's runtime major.
+          node-version: 24
+          cache: pnpm
+
+      # --frozen-lockfile is the point of this step: it fails when
+      # pnpm-lock.yaml doesn't match package.json, which is exactly the state a
+      # half-applied dependency PR arrives in.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # `next build` imports the page modules during page-data collection, and
+      # config.ts runs its zod validation at import (fail-fast by design), so
+      # the required vars must be *present* at build time. These are the same
+      # throwaway placeholders the Dockerfile's build stage passes — they are
+      # not secrets, nothing is prerendered with them, and no NEXT_PUBLIC_* var
+      # is involved so nothing is inlined into a client bundle.
+      - name: Build
+        env:
+          PG_DATABASE_URL: postgres://build:build@localhost:5432/build
+          ANTHROPIC_API_KEY: sk-build-placeholder
+          OPENAI_API_KEY: sk-build-placeholder
+        run: pnpm build
