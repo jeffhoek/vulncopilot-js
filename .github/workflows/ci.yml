@@ -79,19 +79,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # `load: true` puts the image in the local daemon so the next step can run
-      # it. Nothing is pushed — this job only ever builds and boots.
+      # Plain `docker build` on purpose. ubuntu-latest already ships Docker with
+      # BuildKit, so docker/setup-buildx-action + docker/build-push-action added
+      # two action downloads and bought only a layer cache — and codeload served
+      # 502s and 429s for that archive, failing this job before any of our code
+      # ran. Nothing is pushed; the image only has to exist locally for the next
+      # step. A cold build is ~2.5 min, which is fine for a job that runs in
+      # parallel with the fast checks.
       - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          load: true
-          tags: vulncopilot-js:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build -t vulncopilot-js:ci .
 
       # Not an integration test — there is no database and no network here. `/`
       # renders the signed-out view without touching PG (see app/page.tsx), so
