@@ -61,3 +61,70 @@ jobs:
           ANTHROPIC_API_KEY: sk-build-placeholder
           OPENAI_API_KEY: sk-build-placeholder
         run: pnpm build
+
+  # A green build does NOT mean the built server runs. `output: "standalone"`
+  # ships a traced subset of node_modules, and a module the runtime resolves
+  # dynamically can be missing from it: the build passes and the container dies
+  # on its first require. That is how Next 16 reached Cloud Run — the image
+  # built fine and then exit(1)'d, because @swc/helpers/esm/* went untraced (see
+  # the outputFileTracingIncludes note in next.config.ts). Starting it is the
+  # only step that catches that class of bug.
+  #
+  # Runs in parallel with `check`; it is slower and shouldn't hold up the fast
+  # feedback.
+  docker:
+    name: Build and boot the container image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Plain `docker build` on purpose. ubuntu-latest already ships Docker with
+      # BuildKit, so docker/setup-buildx-action + docker/build-push-action added
+      # two action downloads and bought only a layer cache — and codeload served
+      # 502s and 429s for that archive, failing this job before any of our code
+      # ran. Nothing is pushed; the image only has to exist locally for the next
+      # step. A cold build is ~2.5 min, which is fine for a job that runs in
+      # parallel with the fast checks.
+      - name: Build image
+        run: docker build -t vulncopilot-js:ci .
+
+      # Not an integration test — there is no database and no network here. `/`
+      # renders the signed-out view without touching PG (see app/page.tsx), so
+      # placeholder env is enough, and a 200 proves the module graph resolved and
+      # the process stayed up. Deliberately does not assert on page content,
+      # which would couple CI to UI copy.
+      - name: Boot the container and probe it
+        env:
+          IMAGE: vulncopilot-js:ci
+        run: |
+          docker run -d --name vc-ci -p 3000:3000 \
+            -e PG_DATABASE_URL=postgres://build:build@localhost:5432/build \
+            -e ANTHROPIC_API_KEY=sk-build-placeholder \
+            -e OPENAI_API_KEY=sk-build-placeholder \
+            -e AUTH_SECRET=ci-smoke-test-not-a-real-secret \
+            "$IMAGE"
+          trap 'docker rm -f vc-ci >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3000/; then
+              echo "container answered 200 on port 3000"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vc-ci 2>/dev/null)" != "true" ]; then
+              echo "::error::container exited before serving a request"
+              docker logs vc-ci
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "::error::container never became ready"
+          docker logs vc-ci
+          exit 1
+
+      - name: Runtime user is not root
+        run: |
+          uid="$(docker run --rm --entrypoint id vulncopilot-js:ci -u)"
+          echo "runtime uid=$uid"
+          [ "$uid" = "10001" ] || { echo "::error::expected uid 10001, got $uid"; exit 1; }
