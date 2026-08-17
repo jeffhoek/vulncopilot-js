@@ -62,52 +62,13 @@ jobs:
           OPENAI_API_KEY: sk-build-placeholder
         run: pnpm build
 
-      # A green `next build` does NOT mean the built server runs. output:
-      # "standalone" ships a traced subset of node_modules, and a module the
-      # runtime resolves dynamically can be missing from it — the build stays
-      # green and the container dies on its first require. That is exactly how
-      # Next 16 shipped broken to Cloud Run: @swc/helpers/esm/* went untraced
-      # (see the outputFileTracingIncludes note in next.config.ts).
-      #
-      # So boot the same artifact the Dockerfile's runner stage copies and make
-      # sure it actually answers.
-      - name: Smoke-test the standalone server
-        working-directory: .next/standalone
-        env:
-          PORT: 3999
-          HOSTNAME: 127.0.0.1
-          PG_DATABASE_URL: postgres://build:build@localhost:5432/build
-          ANTHROPIC_API_KEY: sk-build-placeholder
-          OPENAI_API_KEY: sk-build-placeholder
-          AUTH_SECRET: ci-smoke-test-not-a-real-secret
-        run: |
-          node server.js > /tmp/standalone.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-
-          for _ in $(seq 1 30); do
-            if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"; then
-              echo "standalone server answered on port $PORT"
-              exit 0
-            fi
-            # Exit early with the log if the process is already gone.
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              echo "::error::standalone server exited before serving a request"
-              cat /tmp/standalone.log
-              exit 1
-            fi
-            sleep 1
-          done
-
-          echo "::error::standalone server never became ready"
-          cat /tmp/standalone.log
-          exit 1
-
-  # The `check` job boots .next/standalone directly, which covers the traced
-  # bundle but not the Dockerfile around it — base image, the standalone/static
-  # copy layout, the non-root user, the CMD. Renovate bumps the `node` tag on
-  # its own schedule, and a base-image change that builds clean and dies at
-  # runtime is exactly the failure this repo already shipped once.
+  # A green build does NOT mean the built server runs. `output: "standalone"`
+  # ships a traced subset of node_modules, and a module the runtime resolves
+  # dynamically can be missing from it: the build passes and the container dies
+  # on its first require. That is how Next 16 reached Cloud Run — the image
+  # built fine and then exit(1)'d, because @swc/helpers/esm/* went untraced (see
+  # the outputFileTracingIncludes note in next.config.ts). Starting it is the
+  # only step that catches that class of bug.
   #
   # Runs in parallel with `check`; it is slower and shouldn't hold up the fast
   # feedback.
@@ -132,9 +93,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Same idea as the standalone smoke test: a built image is not a working
-      # image. `/` renders the signed-out view without touching the database, so
-      # placeholder env is enough to prove the server came up and served HTML.
+      # Not an integration test — there is no database and no network here. `/`
+      # renders the signed-out view without touching PG (see app/page.tsx), so
+      # placeholder env is enough, and a 200 proves the module graph resolved and
+      # the process stayed up. Deliberately does not assert on page content,
+      # which would couple CI to UI copy.
       - name: Boot the container and probe it
         env:
           IMAGE: vulncopilot-js:ci
@@ -149,11 +112,7 @@ jobs:
 
           for _ in $(seq 1 30); do
             if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3000/; then
-              echo "container answered on port 3000"
-              # Confirm it is really the app and not something else on the port.
-              curl -sf --max-time 5 http://127.0.0.1:3000/ | grep -qi "sign in" \
-                && echo "served the signed-out view" \
-                || { echo "::error::responded, but not with the expected page"; exit 1; }
+              echo "container answered 200 on port 3000"
               exit 0
             fi
             if [ "$(docker inspect -f '{{.State.Running}}' vc-ci 2>/dev/null)" != "true" ]; then
