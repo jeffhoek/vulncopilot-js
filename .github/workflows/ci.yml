@@ -61,3 +61,44 @@ jobs:
           ANTHROPIC_API_KEY: sk-build-placeholder
           OPENAI_API_KEY: sk-build-placeholder
         run: pnpm build
+
+      # A green `next build` does NOT mean the built server runs. output:
+      # "standalone" ships a traced subset of node_modules, and a module the
+      # runtime resolves dynamically can be missing from it — the build stays
+      # green and the container dies on its first require. That is exactly how
+      # Next 16 shipped broken to Cloud Run: @swc/helpers/esm/* went untraced
+      # (see the outputFileTracingIncludes note in next.config.ts).
+      #
+      # So boot the same artifact the Dockerfile's runner stage copies and make
+      # sure it actually answers.
+      - name: Smoke-test the standalone server
+        working-directory: .next/standalone
+        env:
+          PORT: 3999
+          HOSTNAME: 127.0.0.1
+          PG_DATABASE_URL: postgres://build:build@localhost:5432/build
+          ANTHROPIC_API_KEY: sk-build-placeholder
+          OPENAI_API_KEY: sk-build-placeholder
+          AUTH_SECRET: ci-smoke-test-not-a-real-secret
+        run: |
+          node server.js > /tmp/standalone.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"; then
+              echo "standalone server answered on port $PORT"
+              exit 0
+            fi
+            # Exit early with the log if the process is already gone.
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "::error::standalone server exited before serving a request"
+              cat /tmp/standalone.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "::error::standalone server never became ready"
+          cat /tmp/standalone.log
+          exit 1
