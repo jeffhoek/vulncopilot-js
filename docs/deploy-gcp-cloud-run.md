@@ -210,6 +210,20 @@ disabled and a warning. `LANGFUSE_BASE_URL` is non-secret (defaults to Langfuse
 US cloud) — put it in `.env.yaml` only if you use the EU region or a self-hosted
 instance.
 
+**Optional — Logfire tracing.** The same spans can go to Pydantic Logfire (the
+platform the reference Python app ships to) over OTLP. Add `LOGFIRE_TOKEN` — a
+Logfire project write token — as a secret; that one var is the whole switch,
+and it is independent of Langfuse, so either, both, or neither may be set.
+`LOGFIRE_BASE_URL` is non-secret and defaults to the US region
+(`https://logfire-us.pydantic.dev`); set it in `.env.yaml` only for an EU
+project. Pass the **base URL only** — the exporter appends `/v1/traces` itself.
+
+Unlike the Langfuse exporter, which flushes each event inline, the Logfire path
+batches spans on a 5-second timer that a scale-to-zero instance never reaches
+(CPU is throttled between requests). The chat route therefore force-flushes once
+each response stream ends, so traces arrive without needing `--no-cpu-throttling`
+or a warm min-instance.
+
 ## 6. Non-secret environment variables
 
 Write `.env.yaml` by hand (already gitignored via the `.env*` pattern). List
