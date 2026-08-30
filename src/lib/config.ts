@@ -275,6 +275,20 @@ const ConfigSchema = z.object({
     EMPTY_TO_UNDEFINED,
     z.string().url().default("https://cloud.langfuse.com"),
   ),
+
+  // ── Observability — Logfire (optional) ──────────────────────────────────
+  // Pydantic Logfire, the platform the reference repo ships to (reference
+  // `app.py` gates on LOGFIRE_ENABLED + LOGFIRE_TOKEN). There is no separate
+  // enable flag here: the token alone is the switch, because Logfire's JS side
+  // has no CLI-credentials fallback for the dev case that flag existed to
+  // cover. Independent of Langfuse — either, both, or neither may be set.
+  LOGFIRE_TOKEN: z.preprocess(EMPTY_TO_UNDEFINED, z.string().optional()),
+  // Region-specific OTLP ingest base. Pass the BASE only: the exporter appends
+  // the signal path (/v1/traces) itself. EU projects use logfire-eu.
+  LOGFIRE_BASE_URL: z.preprocess(
+    EMPTY_TO_UNDEFINED,
+    z.string().url().default("https://logfire-us.pydantic.dev"),
+  ),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

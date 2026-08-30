@@ -6,7 +6,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Mastra + pg are server-only; keep them out of the client bundle and
   // don't let Next try to bundle native/optional deps.
-  serverExternalPackages: ["@mastra/core", "@mastra/observability", "@mastra/langfuse", "pg"],
+  serverExternalPackages: [
+    "@mastra/core",
+    "@mastra/observability",
+    "@mastra/langfuse",
+    // Logfire path: the OTLP exporter and its @opentelemetry/* deps are
+    // server-only and load their protobuf exporter via a runtime dynamic
+    // import, which the bundler cannot follow.
+    "@mastra/otel-exporter",
+    "@opentelemetry/exporter-trace-otlp-proto",
+    "pg",
+  ],
   // Next 16's require-hook aliases a handful of modules to
   // `@swc/helpers/esm/*` at *runtime*, so file tracing never sees those paths
   // and traces only the two `cjs/` helpers it can statically find. The

@@ -5,7 +5,7 @@ import {
   type UIMessage,
 } from "ai";
 import { toAISdkStream } from "@mastra/ai-sdk";
-import { mastra } from "@/src/mastra";
+import { flushObservability, mastra } from "@/src/mastra";
 import { auth } from "@/auth";
 import { config } from "@/src/lib/config";
 import { pool } from "@/src/lib/db";
@@ -114,9 +114,10 @@ export async function POST(req: Request): Promise<Response> {
     // like this is fine on a persistent Node server (see `runtime = "nodejs"`);
     // a serverless deploy would need waitUntil to guarantee it completes.
     const stream = await agent.stream(await convertToModelMessages(messages), {
-      // Trace attribution (inert unless Langfuse is configured — see
+      // Trace attribution (inert unless a tracing backend is configured — see
       // src/mastra/observability.ts). The Langfuse exporter maps
-      // metadata.userId → user.id and metadata.sessionId → session.id.
+      // metadata.userId → user.id and metadata.sessionId → session.id; on the
+      // Logfire/OTLP path both land as span attributes.
       tracingOptions: {
         metadata: {
           userId,
@@ -175,6 +176,24 @@ export async function POST(req: Request): Promise<Response> {
       onError,
       execute: ({ writer }) => {
         writer.merge(toAISdkStream(stream, { from: "agent", version: "v6", onError }));
+      },
+      // Force-flush spans once the whole UI stream has ended. This hook, not
+      // the agent's `onFinish` above, because it fires strictly after the
+      // Mastra stream completes — so the AGENT_RUN root span has closed and is
+      // in the exporter's queue by now, whereas at `onFinish` time it may not
+      // be. Only the Logfire/OTLP exporter actually buffers (BatchSpanProcessor
+      // on a 5s timer); without this a scale-to-zero Cloud Run instance freezes
+      // before that timer fires and the trace is simply lost. Awaited by the
+      // AI SDK, and safe to await on a persistent Node server (`runtime =
+      // "nodejs"`); a serverless deploy would need waitUntil, same caveat as
+      // the usage accounting above.
+      onEnd: async () => {
+        try {
+          await flushObservability();
+        } catch (err) {
+          // Losing traces must never fail a request that already succeeded.
+          console.error("Observability flush failed", err);
+        }
       },
     });
     return createUIMessageStreamResponse({ stream: uiMessageStream });

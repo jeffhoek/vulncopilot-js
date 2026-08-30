@@ -128,3 +128,15 @@ jobs:
           uid="$(docker run --rm --entrypoint id vulncopilot-js:ci -u)"
           echo "runtime uid=$uid"
           [ "$uid" = "10001" ] || { echo "::error::expected uid 10001, got $uid"; exit 1; }
+
+      - name: Logfire OTLP exporter resolves in the image
+        # Only reached at runtime, and only when LOGFIRE_TOKEN is set — and
+        # OtelExporter catches a failed import and logs "not installed", so a
+        # bundle missing this ships green while traces silently vanish. It went
+        # out that way once. Node's resolution here is the real test: running it
+        # from a checkout passes even when the bundle is broken, because the
+        # resolver escapes upward into the repo's own node_modules.
+        run: |
+          docker run --rm --entrypoint node vulncopilot-js:ci --input-type=module \
+            -e 'await import("@opentelemetry/exporter-trace-otlp-proto")' \
+            || { echo "::error::@opentelemetry/exporter-trace-otlp-proto does not resolve in the image — Logfire tracing would be silently disabled"; exit 1; }

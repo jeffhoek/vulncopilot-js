@@ -172,43 +172,141 @@ Note the client id and generate a client secret — they become the
 
 Store every sensitive value in Secret Manager, never in `.env.yaml`:
 
-| Secret | Value |
-|---|---|
-| `PG_DATABASE_URL` | Supabase `app_readonly` pooler URL from step 3 (embeds the password) |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `OPENAI_API_KEY` | OpenAI key (embeddings only — `text-embedding-3-small`) |
-| `AUTH_SECRET` | `openssl rand -base64 32` |
-| `AUTH_GITHUB_ID` | Production OAuth app client id (step 4) |
-| `AUTH_GITHUB_SECRET` | Production OAuth app client secret (step 4) |
-| `MCP_API_KEY` | `openssl rand -hex 32` — **required**: if unset, `/api/mcp` serves unauthenticated |
+| Secret | Required? | Value |
+|---|---|---|
+| `PG_DATABASE_URL` | Yes | Supabase `app_readonly` pooler URL from step 3 (embeds the password) |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
+| `OPENAI_API_KEY` | Yes | OpenAI key (embeddings only — `text-embedding-3-small`) |
+| `AUTH_SECRET` | Yes | `openssl rand -base64 32` |
+| `AUTH_GITHUB_ID` | Yes | Production OAuth app client id (step 4) |
+| `AUTH_GITHUB_SECRET` | Yes | Production OAuth app client secret (step 4) |
+| `MCP_API_KEY` | Yes | `openssl rand -hex 32` — if unset, `/api/mcp` serves unauthenticated |
+| `LANGFUSE_PUBLIC_KEY` | Optional | Langfuse tracing — needs **both** keys, see [tracing backends](#optional--tracing-backends) |
+| `LANGFUSE_SECRET_KEY` | Optional | Langfuse tracing |
+| `LOGFIRE_TOKEN` | Optional | Logfire tracing — scope the key first, see [tracing backends](#optional--tracing-backends) |
 
-Create each one and grant the runtime SA access (prompts for the value so it
-never lands in shell history):
+Two ways in: the loop for a fresh setup, or the single-secret recipe for adding
+or rotating one later. Both assume `YOUR_PROJECT_ID` is exported (step 1).
+
+### Create them all (fresh setup)
+
+Prompts for each value, so nothing lands in shell history. The `|| break` stops
+the loop at the first failure rather than continuing past a half-made secret:
 
 ```bash
 for s in PG_DATABASE_URL ANTHROPIC_API_KEY OPENAI_API_KEY \
          AUTH_SECRET AUTH_GITHUB_ID AUTH_GITHUB_SECRET MCP_API_KEY; do
   printf "Enter value for %s: " "$s"; IFS= read -rs v; echo
-  printf '%s' "$v" | gcloud secrets create "$s" --data-file=-
+  printf '%s' "$v" | gcloud secrets create "$s" --data-file=- || break
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:vulncopilot-runner@$YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/secretmanager.secretAccessor"
-done
+    --role="roles/secretmanager.secretAccessor" || break
+done; unset v
 ```
 
-Update a value later (then see [Redeploying](#8-redeploying)):
+No `services update` here — step 8's deploy declares the full set in one
+`--set-secrets`. If the loop stops early, fix the cause and rerun it with only
+the names still missing.
+
+To set up tracing at the same time, append `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY`, or `LOGFIRE_TOKEN` to that list — but read
+[tracing backends](#optional--tracing-backends) first for what those values are
+and how to scope the Logfire key.
+
+### Add or rotate one secret
+
+The same recipe covers both: a new secret is created and bound, an existing one
+gets a new version. Run the blocks in order and stop on any failure.
+
+Name it:
 
 ```bash
-echo -n "new-value" | gcloud secrets versions add SECRET_NAME --data-file=-
+SECRET=LOGFIRE_TOKEN
 ```
 
-**Optional — Langfuse tracing.** To export agent/LLM/tool traces, add
-`LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` as two more secrets (same
-create + IAM-binding loop above, and add them to `--set-secrets` in step 8).
-Tracing stays off unless **both** are set; setting only one boots with tracing
-disabled and a warning. `LANGFUSE_BASE_URL` is non-secret (defaults to Langfuse
-US cloud) — put it in `.env.yaml` only if you use the EU region or a self-hosted
-instance.
+Read the value (input is hidden):
+
+```bash
+read -rs SECRET_VALUE
+```
+
+Create it if new, or add a version if it already exists — the IAM binding is
+granted once, at creation:
+
+```bash
+if gcloud secrets describe "$SECRET" >/dev/null 2>&1; then
+  printf '%s' "$SECRET_VALUE" | gcloud secrets versions add "$SECRET" --data-file=-
+else
+  printf '%s' "$SECRET_VALUE" | gcloud secrets create "$SECRET" --data-file=- &&
+  gcloud secrets add-iam-policy-binding "$SECRET" \
+    --member="serviceAccount:vulncopilot-runner@$YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+fi
+```
+
+Attach it to the service. Required for a new secret, and it also forces the new
+revision a rotation needs, since secrets resolve at instance start:
+
+```bash
+gcloud run services update vulncopilot --region us-central1 --update-secrets="$SECRET=$SECRET:latest"
+```
+
+Clear the value from your shell:
+
+```bash
+unset SECRET SECRET_VALUE
+```
+
+Two things this recipe is careful about:
+
+- **The IAM binding is granted once, at creation.** Cloud Run reads the secret
+  as the runtime SA, which has no access until bound, and a missing binding
+  fails at *instance start* — the deploy looks fine and the revision dies.
+  Rotations reuse the existing binding, which is why only the create branch
+  binds.
+- **`--update-secrets`, never `--set-secrets`, against a running service.**
+  `gcloud`'s own help for `--set-secrets` reads "All existing secrets will be
+  removed first", so the single-entry form would unbind `PG_DATABASE_URL` and
+  the auth secrets, and the next revision would fail zod validation. (Step 8
+  uses `--set-secrets` legitimately: it declares the full set on a fresh
+  deploy.) A `PERMISSION_DENIED` on the binding means you lack
+  `secretmanager.admin`.
+
+### Optional — tracing backends
+
+Two independent backends; set either, both, or neither. The mechanics are the
+single-secret recipe above.
+
+#### Langfuse
+
+Needs **both** keys — setting only one boots with tracing disabled and a
+warning. Run [Add or rotate one secret](#add-or-rotate-one-secret) twice, with
+`SECRET=LANGFUSE_PUBLIC_KEY` then `SECRET=LANGFUSE_SECRET_KEY`.
+
+`LANGFUSE_BASE_URL` is non-secret; set it in `.env.yaml` only for the EU region
+or a self-hosted instance.
+
+#### Logfire
+
+The token alone is the switch. Create the key in the Logfire UI first — tick
+**Send telemetry** and nothing else:
+
+| Permission | Needed? | Why |
+|---|---|---|
+| **Send telemetry** | **Yes** | All the app does is POST spans to `/v1/traces` |
+| Read | No | Exposes trace contents — user queries and CVE conversations |
+| Manage | No | Can mint further tokens and API keys |
+| Advanced | No | Already covered by Send telemetry |
+
+Use a token separate from the reference Python app's, so either can be revoked
+without breaking the other.
+
+Then run [Add or rotate one secret](#add-or-rotate-one-secret) with
+`SECRET=LOGFIRE_TOKEN`.
+
+`LOGFIRE_BASE_URL` is non-secret and defaults to the US region; set it in
+`.env.yaml` only for an EU project, and pass the **base URL only** — the
+exporter appends `/v1/traces` itself.
 
 ## 6. Non-secret environment variables
 
