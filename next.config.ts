@@ -25,18 +25,7 @@ const nextConfig: NextConfig = {
   // `next build` is unaffected — this only shows up when the built server runs,
   // which is why CI boots it (see .github/workflows/ci.yml).
   outputFileTracingIncludes: {
-    "/**/*": [
-      "./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**",
-      // Same shape of problem, different cause: @mastra/otel-exporter picks its
-      // OTLP exporter package at *runtime* (`await import(spec.pkg)` off a
-      // protocol lookup table), so file tracing never sees this specifier and
-      // the standalone bundle ships without it. The failure is quiet — the
-      // exporter logs "not available for protocol" and disables itself, so
-      // Logfire tracing just goes dark in production while the app runs fine.
-      // Its three deps (otlp-exporter-base, otlp-transformer, sdk-trace) are
-      // already traced via other packages at matching versions.
-      "./node_modules/.pnpm/@opentelemetry+exporter-trace-otlp-proto@*/node_modules/@opentelemetry/exporter-trace-otlp-proto/**",
-    ],
+    "/**/*": ["./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**"],
   },
 };
 

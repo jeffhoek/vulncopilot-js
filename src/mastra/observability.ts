@@ -1,12 +1,23 @@
 import { Observability } from "@mastra/observability";
 import type { ObservabilityExporter } from "@mastra/core/observability";
 import { LangfuseExporter } from "@mastra/langfuse";
-// PINNED EXACTLY to 1.3.10 in package.json, and it cannot be bumped on its
+// Pinned exactly to 1.3.10 in package.json, and it cannot be bumped on its
 // own: 1.3.11+ import `resolveExportedSpanId` from @mastra/core/observability,
 // which @mastra/core 1.59.0 does not export. The failure is a module-resolution
 // SyntaxError at import time — it takes the whole app down, not just tracing —
 // so raise the core version first, then this one.
 import { OtelExporter } from "@mastra/otel-exporter";
+// Imported STATICALLY and handed to OtelExporter below, rather than letting it
+// resolve this itself. Left to its own devices it does `await import(pkg)` off
+// a protocol lookup table; Next's file tracing cannot follow a computed
+// specifier, and even with the files force-copied into the bundle the bare
+// specifier does not resolve, because pnpm's isolated layout links packages
+// through `.pnpm/node_modules` and nothing creates that link for a dependency
+// no traced module names. In the container the import throws
+// ERR_MODULE_NOT_FOUND, OtelExporter catches it and logs "not installed", and
+// tracing is silently off while the app serves normally. A static import here
+// is traced like any other dependency and resolves from the app root.
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 
 // Tracing is opt-in per backend: Langfuse needs BOTH keys, Logfire needs its
 // write token. Either, both, or neither may be configured — both exporters go
@@ -79,21 +90,29 @@ function buildLogfireExporter(
 ): ObservabilityExporter | undefined {
   const { token, baseUrl } = s.logfire;
   if (!token) return undefined;
+  // Logfire's write token IS the Authorization value — no "Bearer" prefix.
+  const headers = { Authorization: token };
   return new OtelExporter({
     // Logfire ingests plain OTLP, so it needs no dedicated Mastra package —
-    // the generic `custom` provider plus a bearer-style header is the whole
-    // integration. Spans arrive as GenAI v1.38 semconv, which is what makes
-    // Logfire render agent runs, tool calls and token counts natively.
+    // the generic `custom` provider is the whole integration. Spans arrive as
+    // GenAI v1.38 semconv, which is what makes Logfire render agent runs, tool
+    // calls and token counts natively.
+    //
+    // `provider` is still required even though `exporter` below supersedes it
+    // for traces: OtelExporter disables itself outright if no provider is
+    // configured. Keep the two in agreement.
     provider: {
       custom: {
         endpoint: baseUrl,
-        // Logfire's write token IS the Authorization value — no "Bearer".
-        headers: { Authorization: token },
-        // MUST be set: `custom` defaults to http/json, which Logfire's OTLP
-        // endpoint does not accept. Requires @opentelemetry/exporter-trace-otlp-proto.
+        headers,
+        // `custom` would otherwise default to http/json, which Logfire's OTLP
+        // endpoint does not accept.
         protocol: "http/protobuf",
       },
     },
+    // Pre-built rather than resolved by OtelExporter — see the import note.
+    // The signal path is ours to append here; the provider form appends it.
+    exporter: new OTLPTraceExporter({ url: `${baseUrl}/v1/traces`, headers }),
     // Traces only. Log export would need @opentelemetry/exporter-logs-otlp-proto
     // as well; the reference repo only instruments traces (pydantic-ai +
     // openai), so shipping Mastra's internal logs would be new volume, not
