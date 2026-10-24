@@ -3,9 +3,24 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
-# Transitive pin: @mastra/mcp pulls hono in through @modelcontextprotocol/*,
-# which resolved it to 4.12.28 — the version four open Dependabot advisories
-# cover. This is a patch-level bump inside the same minor. Drop it once the MCP
-# packages raise their own floor past it.
+# Transitive security pins for open Dependabot alerts. Each key is scoped to
+# the vulnerable range and each value is a caret range, so the floor rises past
+# the first patched release without crossing a major version. Drop an entry
+# once the packages that pull it in raise their own floor past it.
+#   - hono, ip-address, fast-uri, @modelcontextprotocol/*: via @mastra/mcp
+#   - proxy-addr, qs: via express (@mastra/core, @mastra/mcp)
+#   - @grpc/grpc-js: via @a2a-js/sdk and the OTLP gRPC exporters
+#   - undici: via @ai-sdk/provider-utils
+#   - js-yaml@3: via gray-matter (@mastra/core); js-yaml@4: via eslint (dev)
 overrides:
-  hono: '>=4.12.34'
+  '@grpc/grpc-js@>=1.14.0 <1.14.5': ^1.14.5
+  '@modelcontextprotocol/client@>=2.0.0 <2.2.0': ^2.2.0
+  '@modelcontextprotocol/sdk@>=1.12.0 <1.31.0': ^1.31.0
+  fast-uri@>=3.0.0 <3.1.6: ^3.1.6
+  hono: ^4.13.7
+  ip-address@<10.7.1: ^10.7.1
+  js-yaml@>=3.0.0 <3.15.2: ^3.15.2
+  js-yaml@>=4.0.0 <4.3.2: ^4.3.2
+  proxy-addr@>=1.1.0 <2.0.8: ^2.0.8
+  qs@>=2.2.5 <6.16.0: ^6.16.0
+  undici@>=7.0.0 <7.29.1: ^7.29.1
