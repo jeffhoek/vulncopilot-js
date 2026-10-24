@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "vulnerabilityAlerts": {
+    "enabled": false
+  },
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "schedule": ["before 6am on monday"],
+  "packageRules": [
+    {
+      "description": "Majors wait 30 days, then sit on the Dependency Dashboard until ticked there; they never open a PR on their own. Once ticked, the weekly schedule is skipped: approving one is a request to see it now.",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "30 days",
+      "dependencyDashboardApproval": true,
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Every minor and patch update lands in one weekly PR, so there is one review a week instead of a stream of small ones. This also keeps the packages that move together in step (the Mastra packages, ai plus the @ai-sdk/* providers, the React and Next monorepos). @mastra/otel-exporter stays out: it is pinned (1.3.11+ crashed at import), and a bad version must not hold back the whole batch.",
+      "matchPackageNames": ["!@mastra/otel-exporter"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "description": "TypeScript 7: typescript-eslint peers on '>=4.8.4 <6.1.0' and hard-errors with 'typescript-eslint does not support TS 7.0'. tsc itself passes clean on 7.0.2 under Next 16 — only the lint toolchain blocks it. Track typescript-eslint#10940 and drop this rule when it ships TS 7 support.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "ESLint 10: eslint-plugin-react 7.37.5 peers on '<=^9.7' and crashes on the removed context.getFilename API. eslint-config-next depends on it, so this unblocks only when that plugin ships ESLint 10 support.",
+      "matchPackageNames": ["eslint"],
+      "allowedVersions": "<10"
+    },
+    {
+      "description": "@types/node tracks the Node major the Dockerfile actually runs (24 LTS), not the newest published types.",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
+    }
+  ]
+}
